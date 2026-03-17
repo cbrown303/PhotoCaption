@@ -35,8 +35,9 @@ PhotoCaption
 # macOS
 .DS_Store
 
-# IDE
-.vscode/
+# IDE (keep launch.json, ignore personal settings)
+.vscode/settings.json
+.vscode/extensions.json
 .idea/
 
 # Test/output images (caption outputs)
