@@ -1,0 +1,28 @@
+# Wails build output and generated files
+build/bin/
+build/darwin/
+frontend/wailsjs/
+
+# Compiled binary
+PhotoCaption
+PhotoCaption.exe
+
+# macOS
+.DS_Store
+
+# Go
+*.exe
+*.test
+*.out
+
+# IDE
+.vscode/
+.idea/
+
+# Test/output images (caption outputs)
+*_caption.jpeg
+*_caption.jpg
+*_caption.png
+
+# Local test images
+Image Originals/

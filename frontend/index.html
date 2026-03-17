@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhotoCaption</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #111827;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    #app {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Left panel ── */
+    #canvas-panel {
+      width: 70%;
+      background: #0a0a0a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #canvas {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+
+    #placeholder {
+      text-align: center;
+      color: #4b5563;
+    }
+
+    #placeholder h2 {
+      font-size: 20px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    #placeholder p {
+      font-size: 14px;
+    }
+
+    /* ── Right panel ── */
+    #right-panel {
+      width: 30%;
+      background: #1f2937;
+      border-left: 1px solid #374151;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
+
+    .field-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #9ca3af;
+    }
+
+    #description {
+      width: 100%;
+      flex: 1;
+      min-height: 160px;
+      background: #111827;
+      color: #e2e8f0;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      line-height: 1.5;
+      resize: vertical;
+      outline: none;
+      user-select: text;
+      transition: border-color 0.15s;
+    }
+
+    #description:focus {
+      border-color: #3b82f6;
+    }
+
+    #char-counter {
+      font-size: 12px;
+      color: #6b7280;
+      text-align: right;
+    }
+
+    #char-counter.near-limit {
+      color: #f59e0b;
+    }
+
+    #apply-btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    #apply-btn:hover:not(:disabled) {
+      background: #1d4ed8;
+    }
+
+    #apply-btn:disabled {
+      background: #1f2937;
+      color: #4b5563;
+      border: 1px solid #374151;
+      cursor: not-allowed;
+    }
+
+    #save-banner {
+      display: none;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      text-align: center;
+      animation: fadeIn 0.2s ease;
+    }
+
+    #save-banner.success {
+      background: #064e3b;
+      color: #6ee7b7;
+      border: 1px solid #065f46;
+    }
+
+    #save-banner.error {
+      background: #7f1d1d;
+      color: #fca5a5;
+      border: 1px solid #991b1b;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="canvas-panel">
+      <canvas id="canvas"></canvas>
+      <div id="placeholder">
+        <h2>No image open</h2>
+        <p>File → Open  (⌘O / Ctrl+O)</p>
+      </div>
+    </div>
+
+    <div id="right-panel">
+      <div class="field-label">Description</div>
+      <textarea id="description" maxlength="2000"
+        placeholder="Enter a caption for this image…"></textarea>
+      <div id="char-counter">0 / 2000</div>
+      <button id="apply-btn" disabled>Apply Caption</button>
+      <div id="save-banner"></div>
+    </div>
+  </div>
+
+  <script>
+    // ── Caption constants (must mirror imageprocess.go) ──────────────────────
+    const FONT_SIZE_PERCENT = 0.03;
+    const FONT_SIZE_MIN     = 28;
+    const PADDING_PERCENT   = 0.02;
+    const LINE_GAP_PERCENT  = 0.008;
+    const BG_COLOR          = 'rgb(10, 10, 10)';
+    const TEXT_COLOR        = 'rgb(240, 240, 240)';
+    const BORDER_COLOR      = 'rgb(60, 60, 60)';
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    let currentImage  = null;   // HTMLImageElement
+    let originalHeight = 0;     // stored pixel height (0 = no prior caption)
+    let imageLoaded   = false;
+
+    // ── DOM refs ──────────────────────────────────────────────────────────────
+    const canvas       = document.getElementById('canvas');
+    const ctx2d        = canvas.getContext('2d');
+    const description  = document.getElementById('description');
+    const charCounter  = document.getElementById('char-counter');
+    const applyBtn     = document.getElementById('apply-btn');
+    const saveBanner   = document.getElementById('save-banner');
+    const placeholder  = document.getElementById('placeholder');
+
+    // ── Character counter ────────────────────────────────────────────────────
+    description.addEventListener('input', updateCharCounter);
+    function updateCharCounter() {
+      const len = description.value.length;
+      charCounter.textContent = `${len} / 2000`;
+      charCounter.className = len > 1800 ? 'near-limit' : '';
+    }
+
+    // ── Apply Caption button ─────────────────────────────────────────────────
+    applyBtn.addEventListener('click', () => {
+      if (imageLoaded) renderPreview();
+    });
+
+    // ── Banner helper ─────────────────────────────────────────────────────────
+    let bannerTimer = null;
+    function showBanner(message, type) {
+      clearTimeout(bannerTimer);
+      saveBanner.textContent = message;
+      saveBanner.className = type;
+      saveBanner.style.display = 'block';
+      bannerTimer = setTimeout(() => { saveBanner.style.display = 'none'; }, 3000);
+    }
+
+    // ── Canvas helpers ────────────────────────────────────────────────────────
+    function effectiveHeight() {
+      if (!currentImage) return 0;
+      return (originalHeight > 0) ? originalHeight : currentImage.naturalHeight;
+    }
+
+    function renderOriginalOnly() {
+      if (!currentImage) return;
+      const w = currentImage.naturalWidth;
+      const h = effectiveHeight();
+      canvas.width  = w;
+      canvas.height = h;
+      ctx2d.drawImage(currentImage, 0, 0, w, h, 0, 0, w, h);
+    }
+
+    function renderPreview() {
+      if (!currentImage) return;
+      const desc  = description.value;
+      const imgW  = currentImage.naturalWidth;
+      const imgH  = effectiveHeight();
+
+      if (!desc.trim()) {
+        renderOriginalOnly();
+        return;
+      }
+
+      // Derive caption metrics — mirrors imageprocess.go constants.
+      const fontSize   = Math.max(FONT_SIZE_MIN, imgW * FONT_SIZE_PERCENT);
+      const padding    = Math.round(imgW * PADDING_PERCENT);
+      const lineGap    = Math.max(2, Math.round(imgW * LINE_GAP_PERCENT));
+      const lineHeight = Math.ceil(fontSize * 1.2);
+
+      ctx2d.font = `${fontSize}px sans-serif`;
+      const maxWidth = imgW - 2 * padding;
+      const lines    = wrapText(desc, maxWidth);
+
+      const nLines   = lines.length;
+      const captionH = padding + nLines * lineHeight + Math.max(0, nLines - 1) * lineGap + padding;
+      const totalH   = imgH + 1 + captionH;
+
+      canvas.width  = imgW;
+      canvas.height = totalH;
+
+      // Original image portion.
+      ctx2d.drawImage(currentImage, 0, 0, imgW, imgH, 0, 0, imgW, imgH);
+
+      // Border line.
+      ctx2d.fillStyle = BORDER_COLOR;
+      ctx2d.fillRect(0, imgH, imgW, 1);
+
+      // Caption background.
+      ctx2d.fillStyle = BG_COLOR;
+      ctx2d.fillRect(0, imgH + 1, imgW, captionH);
+
+      // Caption text.
+      ctx2d.fillStyle   = TEXT_COLOR;
+      ctx2d.font        = `${fontSize}px sans-serif`;
+      ctx2d.textBaseline = 'alphabetic';
+
+      let y = imgH + 1 + padding + lineHeight;
+      for (const line of lines) {
+        if (line !== '') ctx2d.fillText(line, padding, y);
+        y += lineHeight + lineGap;
+      }
+    }
+
+    // Word-wrap: honour hard newlines and soft word-wrap at maxWidth.
+    function wrapText(text, maxWidth) {
+      const result = [];
+      const hardLines = text.split('\n');
+      for (const hardLine of hardLines) {
+        if (!hardLine.trim()) { result.push(''); continue; }
+        const words = hardLine.split(/\s+/).filter(Boolean);
+        let current = '';
+        for (const word of words) {
+          const candidate = current ? current + ' ' + word : word;
+          if (ctx2d.measureText(candidate).width > maxWidth && current) {
+            result.push(current);
+            current = word;
+          } else {
+            current = candidate;
+          }
+        }
+        if (current) result.push(current);
+      }
+      return result;
+    }
+
+    // ── Wails runtime event wiring ────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {
+      // Safety: runtime may not exist outside Wails (e.g. browser preview).
+      const rt = window.runtime;
+      if (!rt) return;
+
+      // Emitted before image:loaded so originalHeight is ready for onload.
+      rt.EventsOn('image:originalHeight', (height) => {
+        originalHeight = height || 0;
+      });
+
+      rt.EventsOn('metadata:description', (desc) => {
+        description.value = desc || '';
+        updateCharCounter();
+      });
+
+      rt.EventsOn('image:loaded', (dataURL) => {
+        const img = new Image();
+        img.onload = () => {
+          currentImage = img;
+          imageLoaded  = true;
+          applyBtn.disabled  = false;
+          canvas.style.display = 'block';
+          placeholder.style.display = 'none';
+          renderPreview();
+        };
+        img.src = dataURL;
+      });
+
+      // Triggered by Go (SaveFile / SaveAsFile) to initiate a save.
+      rt.EventsOn('save:request', () => {
+        if (!imageLoaded) return;
+        window.go.main.App.SaveWithDescription(description.value);
+      });
+
+      rt.EventsOn('save:success', () => showBanner('Saved successfully', 'success'));
+      rt.EventsOn('save:error',   (msg) => showBanner('Save failed: ' + msg, 'error'));
+    });
+  </script>
+</body>
+</html>
