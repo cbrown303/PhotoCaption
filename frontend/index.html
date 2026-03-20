@@ -171,7 +171,7 @@
 
     <div id="right-panel">
       <div class="field-label">Description</div>
-      <textarea id="description" maxlength="2000"
+      <textarea id="description" maxlength="500"
         placeholder="Enter a caption for this image…"></textarea>
       <div id="char-counter">0 / 2000</div>
       <button id="apply-btn" disabled>Apply Caption</button>
@@ -207,8 +207,8 @@
     description.addEventListener('input', updateCharCounter);
     function updateCharCounter() {
       const len = description.value.length;
-      charCounter.textContent = `${len} / 2000`;
-      charCounter.className = len > 1800 ? 'near-limit' : '';
+      charCounter.textContent = `${len} / 500`;
+      charCounter.className = len > 450 ? 'near-limit' : '';
     }
 
     // ── Apply Caption button ─────────────────────────────────────────────────

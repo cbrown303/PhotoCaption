@@ -27,10 +27,13 @@ go.work.sum
 # Wails build output and generated files
 build/bin/
 build/darwin/
+build/release/
+build/windows/
 frontend/wailsjs/
 
-# Compiled binary
+# Compiled binaries
 PhotoCaption
+exifdump
 
 # macOS
 .DS_Store

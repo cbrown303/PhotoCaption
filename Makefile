@@ -7,8 +7,29 @@ dev:          ## Run the app in development mode (hot-reload)
 	$(WAILS) dev
 
 .PHONY: build
-build:        ## Build a production binary into build/bin/
-	$(WAILS) build
+build:        ## Build macOS production app into build/bin/
+	$(WAILS) build -platform darwin/amd64
+
+.PHONY: build-windows
+build-windows: ## Cross-compile Windows .exe into build/bin/  (requires: brew install mingw-w64)
+	CC=x86_64-w64-mingw32-gcc $(WAILS) build -platform windows/amd64
+
+.PHONY: build-all
+build-all:    ## Build both macOS and Windows into build/bin/
+	$(WAILS) build -platform darwin/amd64
+	CC=x86_64-w64-mingw32-gcc $(WAILS) build -platform windows/amd64
+
+.PHONY: release
+release: build-all  ## Build both platforms and package into build/release/
+	mkdir -p build/release
+	cd build/bin && zip -r ../release/PhotoCaption-mac.zip PhotoCaption.app
+	cd build/bin && zip -r ../release/PhotoCaption-windows.zip PhotoCaption.exe
+
+# make release
+# gh release create v0.1.0 \
+#   build/release/PhotoCaption-mac.zip \
+#   build/release/PhotoCaption-windows.zip \
+#   --title "v0.1.0" --notes "Initial release"
 
 .PHONY: build-debug
 build-debug:  ## Build with debug symbols and devtools enabled

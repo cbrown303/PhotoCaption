@@ -86,17 +86,33 @@ func (a *App) SaveAsFile() {
 // SaveWithDescription is called from JS to persist the image with the given description.
 // It is exposed on the Wails JS bridge as window.go.main.App.SaveWithDescription.
 func (a *App) SaveWithDescription(description string) {
+	fmt.Printf("[DEBUG] SaveWithDescription called — file=%q desc=%q\n", a.currentFile, description)
 	if a.currentFile == "" {
+		fmt.Println("[DEBUG] SaveWithDescription: no current file, returning early")
+		return
+	}
+	const maxDescriptionLen = 500
+	if len([]rune(description)) > maxDescriptionLen {
+		runtime.EventsEmit(a.ctx, "save:error", fmt.Sprintf("Caption is too long (%d characters). Maximum is %d.", len([]rune(description)), maxDescriptionLen))
 		return
 	}
 
-	// Step 1 — ensure original height is stored in EXIF before pixels are modified.
+	// Step 1 — snapshot raw EXIF bytes before any file writes.
+	// This captures the pristine original camera metadata (Make, Model, GPS, …).
+	origExif, err := SnapshotExifSegment(a.currentFile)
+	if err != nil {
+		runtime.EventsEmit(a.ctx, "save:error", fmt.Sprintf("Failed to snapshot EXIF: %v", err))
+		return
+	}
+	fmt.Printf("[DEBUG] Step 1 — EXIF snapshot: %d bytes\n", len(origExif))
+
+	// Step 2 — determine the original image height.
+	// On first save origHeight is 0; derive it from the pixel dimensions.
 	origHeight, err := ReadOriginalHeight(a.currentFile)
 	if err != nil {
 		runtime.EventsEmit(a.ctx, "save:error", fmt.Sprintf("Failed to read metadata: %v", err))
 		return
 	}
-
 	if origHeight == 0 {
 		img, err := loadImage(a.currentFile)
 		if err != nil {
@@ -104,24 +120,42 @@ func (a *App) SaveWithDescription(description string) {
 			return
 		}
 		origHeight = img.Bounds().Dy()
-		if err := WriteDescription(a.currentFile, description, origHeight); err != nil {
-			// Non-fatal: log and continue — the pixel write is more important.
-			fmt.Printf("warning: could not write original height to EXIF: %v\n", err)
-		}
+	}
+	fmt.Printf("[DEBUG] Step 2 — origHeight: %d\n", origHeight)
+
+	// Step 3 — patch ImageDescription inside the in-memory EXIF snapshot.
+	// UpdateExifDescription modifies only that one tag; every other byte is
+	// preserved. The result is used in step 4 so no separate WriteDescription
+	// call is ever needed.
+	updatedExif, exifPatchErr := UpdateExifDescription(origExif, description, origHeight)
+	if exifPatchErr != nil {
+		// Tag not yet present (first save of an original photo) or no EXIF at all.
+		// Fall back to using the unmodified snapshot; WriteDescription (step 5)
+		// will add the tag via the IfdBuilder path.
+		fmt.Printf("[DEBUG] Step 3 — in-memory patch skipped (%v); will write via IfdBuilder\n", exifPatchErr)
+		updatedExif = origExif
+	} else {
+		fmt.Printf("[DEBUG] Step 3 — in-memory EXIF patch OK: %d bytes\n", len(updatedExif))
 	}
 
-	// Step 2 — crop to original height and append caption pixels.
-	if err := AppendCaptionToImage(a.currentFile, origHeight, description); err != nil {
+	// Step 4 — pixel write + EXIF inject in one pass.
+	// AppendCaptionToImage crops to origHeight, renders the caption, saves the
+	// pixel data (which strips EXIF), then injects updatedExif back into the file.
+	if err := AppendCaptionToImage(a.currentFile, origHeight, description, updatedExif); err != nil {
 		runtime.EventsEmit(a.ctx, "save:error", fmt.Sprintf("Failed to save image: %v", err))
 		return
 	}
 
-	// Step 3 — write description to EXIF after pixel write (encoding strips EXIF).
-	if err := WriteDescription(a.currentFile, description, origHeight); err != nil {
-		fmt.Printf("warning: could not write description EXIF: %v\n", err)
+	// Step 5 — fallback: if the in-memory patch failed (ImageDescription tag was
+	// absent), write it now via the IfdBuilder path. The injected EXIF from
+	// step 4 is still on disk so all original tags are preserved.
+	if exifPatchErr != nil {
+		if err := WriteDescription(a.currentFile, description, origHeight); err != nil {
+			fmt.Printf("warning: could not write description EXIF: %v\n", err)
+		}
 	}
 
-	// Step 4 — reload saved file into the canvas.
+	// Step 6 — reload saved file into the canvas.
 	a.loadAndEmitImage(a.currentFile)
 	runtime.EventsEmit(a.ctx, "save:success")
 }

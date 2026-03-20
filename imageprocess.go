@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	exif "github.com/dsoprea/go-exif/v3"
 
 	"github.com/golang/freetype"
 	"github.com/golang/freetype/truetype"
@@ -44,7 +47,12 @@ func loadImage(filePath string) (image.Image, error) {
 
 // AppendCaptionToImage crops img to origHeight (removing any prior caption),
 // renders description as a styled caption block, and saves atomically.
-func AppendCaptionToImage(filePath string, origHeight int, description string) error {
+// origExif is the raw APP1 EXIF segment bytes captured before any EXIF writes
+// were made to the file; passing them here ensures the original camera metadata
+// (Make, Model, GPS, etc.) is restored after the pixel rewrite.
+func AppendCaptionToImage(filePath string, origHeight int, description string, origExif []byte) error {
+	fmt.Printf("[DEBUG] AppendCaptionToImage called — file=%q origHeight=%d exifBytes=%d\n", filePath, origHeight, len(origExif))
+
 	img, err := loadImage(filePath)
 	if err != nil {
 		return err
@@ -129,8 +137,31 @@ func AppendCaptionToImage(filePath string, origHeight int, description string) e
 		y += lineHeight + lineGap
 	}
 
-	// Save atomically.
-	return saveImage(filePath, out)
+	fmt.Println("[AppendCaptionToImage] Saving Image")
+	// Save atomically (this strips all EXIF).
+	if err := saveImage(filePath, out); err != nil {
+		fmt.Printf("[AppendCaptionToImage] Error: %v\n", err)
+		return err
+	}
+
+	// Reinject the original EXIF bytes (captured before any writes in SaveWithDescription)
+	// so Make, Model, GPS, etc. are restored. WriteDescription in app.go then updates
+	// ImageDescription on top of this now-valid EXIF.
+	fmt.Println("[AppendCaptionToImage] Injecting original EXIF snapshot....")
+	if len(origExif) >= 6 {
+		if tags, _, err := exif.GetFlatExifData(origExif[6:], nil); err == nil {
+			fmt.Printf("[AppendCaptionToImage] origExif snapshot contains %d tags\n", len(tags))
+		} else {
+			fmt.Printf("[AppendCaptionToImage] origExif snapshot parse warning: %v\n", err)
+		}
+		if err := InjectExifSegment(filePath, origExif); err != nil {
+			return fmt.Errorf("reinject exif after pixel write: %w", err)
+		}
+	} else {
+		fmt.Printf("[AppendCaptionToImage] origExif snapshot is empty — skipping inject\n")
+	}
+	fmt.Println("[AppendCaptionToImage] EXIF inject done")
+	return nil
 }
 
 // wrapText splits text into lines that fit within maxWidth, honouring hard
