@@ -18,6 +18,16 @@ func main() {
 	app := NewApp()
 
 	appMenu := menu.NewMenu()
+
+	pcMenu := appMenu.AddSubmenu("PhotoCaption")
+	pcMenu.AddText("About PhotoCaption", nil, func(_ *menu.CallbackData) {
+		app.ShowAbout()
+	})
+	pcMenu.AddSeparator()
+	pcMenu.AddText("Settings…", nil, func(_ *menu.CallbackData) {
+		app.ShowSettings()
+	})
+
 	fileMenu := appMenu.AddSubmenu("File")
 	fileMenu.AddText("Open", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
 		app.OpenFile()

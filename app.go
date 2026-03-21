@@ -12,10 +12,21 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// AppInfo is returned by GetAppInfo and consumed by the About modal.
+type AppInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Author  string `json:"author"`
+	GitHub  string `json:"github"`
+	License string `json:"license"`
+	Notices string `json:"notices"`
+}
+
 // App holds application state and exposes methods to the Wails JS bridge.
 type App struct {
 	ctx         context.Context
 	currentFile string
+	settings    Settings
 }
 
 func NewApp() *App {
@@ -24,6 +35,43 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.settings = loadSettings()
+}
+
+// GetAppInfo returns static information shown in the About dialog.
+func (a *App) GetAppInfo() AppInfo {
+	return AppInfo{
+		Name:    "PhotoCaption",
+		Version: "0.1.0",
+		Author:  "Christopher Brown",
+		GitHub:  "https://github.com/cbrown303/PhotoCaption",
+		License: "https://github.com/cbrown303/PhotoCaption/blob/main/LICENSE",
+		Notices: "https://github.com/cbrown303/PhotoCaption/blob/main/NOTICES.md",
+	}
+}
+
+// GetSettings returns the current user settings.
+func (a *App) GetSettings() Settings {
+	return a.settings
+}
+
+// UpdateSettings persists new settings and applies them immediately.
+func (a *App) UpdateSettings(s Settings) error {
+	if s.SaveAsSuffix == "" {
+		s.SaveAsSuffix = "_caption"
+	}
+	a.settings = s
+	return saveSettings(s)
+}
+
+// ShowAbout signals the frontend to open the About modal.
+func (a *App) ShowAbout() {
+	runtime.EventsEmit(a.ctx, "app:about")
+}
+
+// ShowSettings signals the frontend to open the Settings modal.
+func (a *App) ShowSettings() {
+	runtime.EventsEmit(a.ctx, "app:settings")
 }
 
 // OpenFile opens a native file picker and loads the chosen image.
@@ -56,7 +104,7 @@ func (a *App) SaveAsFile() {
 	}
 	ext := filepath.Ext(a.currentFile)
 	base := strings.TrimSuffix(filepath.Base(a.currentFile), ext)
-	defaultName := base + "_caption" + ext
+	defaultName := base + a.settings.SaveAsSuffix + ext
 
 	newPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Save As",

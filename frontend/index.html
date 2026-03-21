@@ -157,6 +157,153 @@
       from { opacity: 0; transform: translateY(-4px); }
       to   { opacity: 1; transform: translateY(0); }
     }
+
+    /* ── Modals ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      animation: fadeIn 0.15s ease;
+    }
+
+    .modal-dialog {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 10px;
+      width: 420px;
+      max-width: 90vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid #374151;
+    }
+
+    .modal-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: #9ca3af;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+
+    .modal-close:hover { color: #f1f5f9; }
+
+    .modal-body  { padding: 20px; }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 20px;
+      border-top: 1px solid #374151;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .btn-primary:hover { background: #1d4ed8; }
+
+    .btn-secondary {
+      background: transparent;
+      color: #9ca3af;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .btn-secondary:hover { color: #f1f5f9; border-color: #6b7280; }
+
+    .about-link {
+      display: block;
+      color: #3b82f6;
+      text-decoration: none;
+      font-size: 14px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #374151;
+      text-align: center;
+    }
+
+    .about-link:hover { background: #374151; }
+
+    .settings-input {
+      width: 100%;
+      background: #111827;
+      color: #e2e8f0;
+      border: 1px solid #374151;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .settings-input:focus { border-color: #3b82f6; }
+
+    .settings-hint {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 6px;
+    }
+
+    .label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    #copyright-btn {
+      background: none;
+      border: 1px solid #374151;
+      color: #9ca3af;
+      border-radius: 5px;
+      padding: 3px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    #copyright-btn:hover { color: #f1f5f9; border-color: #6b7280; }
+    #copyright-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .settings-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #9ca3af;
+      margin: 16px 0 6px;
+    }
+
+    .settings-section-label:first-child { margin-top: 0; }
   </style>
 </head>
 <body>
@@ -170,16 +317,73 @@
     </div>
 
     <div id="right-panel">
-      <div class="field-label">Description</div>
+      <div class="label-row">
+        <div class="field-label">Description</div>
+        <button id="copyright-btn" disabled title="Fill caption with your saved copyright text">© Insert Copyright</button>
+      </div>
       <textarea id="description" maxlength="500"
         placeholder="Enter a caption for this image…"></textarea>
-      <div id="char-counter">0 / 2000</div>
+      <div id="char-counter">0 / 500</div>
       <button id="apply-btn" disabled>Apply Caption</button>
       <div id="save-banner"></div>
     </div>
   </div>
 
+  <!-- ── About modal ─────────────────────────────────────────────────────── -->
+  <div id="about-modal" class="modal-overlay" style="display:none">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2>About PhotoCaption</h2>
+        <button class="modal-close" onclick="closeModal('about-modal')">&times;</button>
+      </div>
+      <div class="modal-body" id="about-body"></div>
+    </div>
+  </div>
+
+  <!-- ── Settings modal ───────────────────────────────────────────────────── -->
+  <div id="settings-modal" class="modal-overlay" style="display:none">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <button class="modal-close" onclick="closeModal('settings-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-section-label">Save As Suffix</div>
+        <input id="setting-suffix" class="settings-input" type="text" />
+        <div class="settings-hint">
+          Suffix appended to the filename when using Save As —
+          e.g. <em>photo<strong style="color:#9ca3af">_caption</strong>.jpg</em>
+        </div>
+
+        <div class="settings-section-label">Copyright Template</div>
+        <textarea id="setting-copyright" class="settings-input" rows="3"
+          maxlength="500" placeholder="e.g. © 2024 Your Name. All rights reserved."
+          style="resize:vertical;line-height:1.5"></textarea>
+        <div class="settings-hint">
+          Inserted into the caption field when you click <em>© Insert Copyright</em>.<br>
+          <strong style="color:#9ca3af">Typing the © symbol:</strong><br>
+          &nbsp;• macOS — <kbd style="background:#111827;border:1px solid #374151;border-radius:3px;padding:1px 5px;font-size:11px">Option</kbd> + <kbd style="background:#111827;border:1px solid #374151;border-radius:3px;padding:1px 5px;font-size:11px">G</kbd><br>
+          &nbsp;• Windows — <kbd style="background:#111827;border:1px solid #374151;border-radius:3px;padding:1px 5px;font-size:11px">Alt</kbd> + <kbd style="background:#111827;border:1px solid #374151;border-radius:3px;padding:1px 5px;font-size:11px">0169</kbd> (numpad)
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeModal('settings-modal')">Cancel</button>
+        <button class="btn-primary" id="settings-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+
   <script>
+    // ── Modal helpers (global so onclick= attributes can reach them) ─────────
+    function openModal(id)  { document.getElementById(id).style.display = 'flex'; }
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+    function openURL(url)   { window.runtime && window.runtime.BrowserOpenURL(url); }
+
+    // Close modal when clicking the dark overlay behind the dialog.
+    document.querySelectorAll('.modal-overlay').forEach(el => {
+      el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+    });
+
     // ── Caption constants (must mirror imageprocess.go) ──────────────────────
     const FONT_SIZE_PERCENT = 0.03;
     const FONT_SIZE_MIN     = 28;
@@ -195,13 +399,14 @@
     let imageLoaded   = false;
 
     // ── DOM refs ──────────────────────────────────────────────────────────────
-    const canvas       = document.getElementById('canvas');
-    const ctx2d        = canvas.getContext('2d');
-    const description  = document.getElementById('description');
-    const charCounter  = document.getElementById('char-counter');
-    const applyBtn     = document.getElementById('apply-btn');
-    const saveBanner   = document.getElementById('save-banner');
-    const placeholder  = document.getElementById('placeholder');
+    const canvas        = document.getElementById('canvas');
+    const ctx2d         = canvas.getContext('2d');
+    const description   = document.getElementById('description');
+    const charCounter   = document.getElementById('char-counter');
+    const applyBtn      = document.getElementById('apply-btn');
+    const saveBanner    = document.getElementById('save-banner');
+    const placeholder   = document.getElementById('placeholder');
+    const copyrightBtn  = document.getElementById('copyright-btn');
 
     // ── Character counter ────────────────────────────────────────────────────
     description.addEventListener('input', updateCharCounter);
@@ -351,6 +556,54 @@
 
       rt.EventsOn('save:success', () => showBanner('Saved successfully', 'success'));
       rt.EventsOn('save:error',   (msg) => showBanner('Save failed: ' + msg, 'error'));
+
+      // ── About modal ───────────────────────────────────────────────────────
+      rt.EventsOn('app:about', async () => {
+        const info = await window.go.main.App.GetAppInfo();
+        document.getElementById('about-body').innerHTML = `
+          <div style="text-align:center;padding-bottom:20px">
+            <div style="font-size:26px;font-weight:700;color:#f1f5f9;margin-bottom:6px">${info.name}</div>
+            <div style="font-size:13px;color:#6b7280">Version ${info.version}</div>
+            <div style="font-size:13px;color:#9ca3af;margin-top:4px">By ${info.author}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <a class="about-link" href="#" onclick="openURL('${info.github}');return false">GitHub Repository</a>
+            <a class="about-link" href="#" onclick="openURL('${info.license}');return false">License (AGPL-3.0)</a>
+            <a class="about-link" href="#" onclick="openURL('${info.notices}');return false">Third-Party Notices</a>
+          </div>`;
+        openModal('about-modal');
+      });
+
+      // ── Settings modal ────────────────────────────────────────────────────
+      rt.EventsOn('app:settings', async () => {
+        const s = await window.go.main.App.GetSettings();
+        document.getElementById('setting-suffix').value    = s.saveAsSuffix;
+        document.getElementById('setting-copyright').value = s.copyrightText;
+        openModal('settings-modal');
+      });
+
+      document.getElementById('settings-save-btn').addEventListener('click', async () => {
+        const suffix    = document.getElementById('setting-suffix').value.trim() || '_caption';
+        const copyright = document.getElementById('setting-copyright').value.trim();
+        await window.go.main.App.UpdateSettings({ saveAsSuffix: suffix, copyrightText: copyright });
+        copyrightBtn.disabled = !copyright;
+        closeModal('settings-modal');
+        showBanner('Settings saved', 'success');
+      });
+
+      // ── Copyright button ──────────────────────────────────────────────────
+      // Enable the button and load saved copyright text on startup.
+      window.go.main.App.GetSettings().then(s => {
+        if (s.copyrightText) copyrightBtn.disabled = false;
+      });
+
+      copyrightBtn.addEventListener('click', async () => {
+        const s = await window.go.main.App.GetSettings();
+        if (!s.copyrightText) return;
+        description.value = s.copyrightText;
+        updateCharCounter();
+        renderPreview();
+      });
     });
   </script>
 </body>
