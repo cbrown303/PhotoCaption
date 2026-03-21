@@ -189,7 +189,7 @@ func (a *App) SaveWithDescription(description string) {
 	// Step 4 — pixel write + EXIF inject in one pass.
 	// AppendCaptionToImage crops to origHeight, renders the caption, saves the
 	// pixel data (which strips EXIF), then injects updatedExif back into the file.
-	if err := AppendCaptionToImage(a.currentFile, origHeight, description, updatedExif); err != nil {
+	if err := AppendCaptionToImage(a.currentFile, origHeight, description, updatedExif, a.settings); err != nil {
 		runtime.EventsEmit(a.ctx, "save:error", fmt.Sprintf("Failed to save image: %v", err))
 		return
 	}

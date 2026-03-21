@@ -1,6 +1,9 @@
 # PhotoCaption
 PhotoCaption is a tool to add captions to the bottom of photo images.  This is useful for a variety of reasons but was mainly created to solve the problem of labeling geneology photos.  This tool will leave the original photo intack and only append to the bottom of the photo the information you provide.
 
+## Platforms
+A build for both MacOS and Windows is available.  Currently, it only supports JPEG and PNG images.
+
 ## Use Cases
 
 ### Personal & Family
@@ -26,13 +29,6 @@ PhotoCaption is a tool to add captions to the bottom of photo images.  This is u
 - **Contractor work logs** — photo plus description of work completed
 - **Inventory tracking** — label equipment, serial numbers, and condition
 
-## Platforms
-A build for both MacOS and Windows is available.  Currently, it only supports JPEG and PNG images.
-
-## Future Enhancements
-* Support other image formats. Possibly tiff, bmp, gif and more.
-* Allow to easily use the caption text as the file name.
-
 ## Acknowledgements
 Built with the assistance of [Claude](https://claude.ai) by Anthropic.
 
@@ -47,3 +43,6 @@ You are free to use, copy, and modify this software provided that:
 - Any derivative works are distributed under the same license.
 - The software is not used for commercial or monetary benefit.
 
+## Future Enhancements
+* Support other image formats. Possibly tiff, bmp, gif and more.
+* Allow to easily use the caption text as the file name.

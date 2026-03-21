@@ -8,14 +8,20 @@ import (
 
 // Settings holds user-configurable application preferences.
 type Settings struct {
-	SaveAsSuffix  string `json:"saveAsSuffix"`
-	CopyrightText string `json:"copyrightText"`
+	SaveAsSuffix      string `json:"saveAsSuffix"`
+	CopyrightText     string `json:"copyrightText"`
+	CaptionTextColor  string `json:"captionTextColor"`
+	CaptionLabelBg    string `json:"captionLabelBg"`
+	CaptionBackground string `json:"captionBackground"`
 }
 
 func defaultSettings() Settings {
 	return Settings{
-		SaveAsSuffix:  "_caption",
-		CopyrightText: "",
+		SaveAsSuffix:      "_caption",
+		CopyrightText:     "",
+		CaptionTextColor:  "#000000",
+		CaptionLabelBg:    "#ffffff",
+		CaptionBackground: "#0a0a0a",
 	}
 }
 
@@ -42,6 +48,15 @@ func loadSettings() Settings {
 	}
 	if s.SaveAsSuffix == "" {
 		s.SaveAsSuffix = "_caption"
+	}
+	if s.CaptionTextColor == "" {
+		s.CaptionTextColor = "#000000"
+	}
+	if s.CaptionLabelBg == "" {
+		s.CaptionLabelBg = "#ffffff"
+	}
+	if s.CaptionBackground == "" {
+		s.CaptionBackground = "#0a0a0a"
 	}
 	return s
 }

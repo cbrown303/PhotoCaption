@@ -304,6 +304,28 @@
     }
 
     .settings-section-label:first-child { margin-top: 0; }
+
+    .color-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+
+    .color-row span {
+      font-size: 13px;
+      color: #e2e8f0;
+    }
+
+    input[type="color"] {
+      width: 44px;
+      height: 28px;
+      border: 1px solid #374151;
+      border-radius: 4px;
+      background: none;
+      cursor: pointer;
+      padding: 2px;
+    }
   </style>
 </head>
 <body>
@@ -359,6 +381,20 @@
         <textarea id="setting-copyright" class="settings-input" rows="3"
           maxlength="500" placeholder="e.g. © 2024 Your Name. All rights reserved."
           style="resize:vertical;line-height:1.5"></textarea>
+        <div class="settings-section-label">Caption Colors</div>
+        <div class="color-row">
+          <span>Letter Color</span>
+          <input type="color" id="setting-text-color" value="#000000">
+        </div>
+        <div class="color-row">
+          <span>Label Background</span>
+          <input type="color" id="setting-label-bg" value="#ffffff">
+        </div>
+        <div class="color-row">
+          <span>Background Color</span>
+          <input type="color" id="setting-bg-color" value="#0a0a0a">
+        </div>
+
         <div class="settings-hint">
           Inserted into the caption field when you click <em>© Insert Copyright</em>.<br>
           <strong style="color:#9ca3af">Typing the © symbol:</strong><br>
@@ -385,13 +421,36 @@
     });
 
     // ── Caption constants (must mirror imageprocess.go) ──────────────────────
-    const FONT_SIZE_PERCENT = 0.03;
-    const FONT_SIZE_MIN     = 28;
-    const PADDING_PERCENT   = 0.02;
-    const LINE_GAP_PERCENT  = 0.008;
-    const BG_COLOR          = 'rgb(10, 10, 10)';
-    const TEXT_COLOR        = 'rgb(240, 240, 240)';
-    const BORDER_COLOR      = 'rgb(60, 60, 60)';
+    const FONT_SIZE_PERCENT   = 0.03;
+    const FONT_SIZE_MIN       = 28;
+    const PADDING_PERCENT     = 0.02;
+    const LINE_GAP_PERCENT    = 0.008;
+    const LABEL_VPAD_RATIO    = 0.50;
+    const LABEL_HPAD_RATIO    = 1.00;
+    const CORNER_RADIUS_RATIO = 0.40;
+
+    // ── Caption color state (loaded from settings, updated on save) ──────────
+    let currentSettings = {
+      captionTextColor:  '#000000',
+      captionLabelBg:    '#ffffff',
+      captionBackground: '#0a0a0a',
+    };
+
+    // ── Canvas rounded-rect helper ────────────────────────────────────────────
+    function fillRoundedRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.arcTo(x + w, y,     x + w, y + r,     r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+      ctx.lineTo(x + r, y + h);
+      ctx.arcTo(x,     y + h, x,     y + h - r, r);
+      ctx.lineTo(x,     y + r);
+      ctx.arcTo(x,     y,     x + r, y,          r);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     // ── State ─────────────────────────────────────────────────────────────────
     let currentImage  = null;   // HTMLImageElement
@@ -448,9 +507,9 @@
 
     function renderPreview() {
       if (!currentImage) return;
-      const desc  = description.value;
-      const imgW  = currentImage.naturalWidth;
-      const imgH  = effectiveHeight();
+      const desc = description.value;
+      const imgW = currentImage.naturalWidth;
+      const imgH = effectiveHeight();
 
       if (!desc.trim()) {
         renderOriginalOnly();
@@ -458,41 +517,57 @@
       }
 
       // Derive caption metrics — mirrors imageprocess.go constants.
-      const fontSize   = Math.max(FONT_SIZE_MIN, imgW * FONT_SIZE_PERCENT);
-      const padding    = Math.round(imgW * PADDING_PERCENT);
-      const lineGap    = Math.max(2, Math.round(imgW * LINE_GAP_PERCENT));
+      const fontSize  = Math.max(FONT_SIZE_MIN, imgW * FONT_SIZE_PERCENT);
+      const bgPad     = Math.round(imgW * PADDING_PERCENT);
+      const lineGap   = Math.max(2, Math.round(imgW * LINE_GAP_PERCENT));
       const lineHeight = Math.ceil(fontSize * 1.2);
+      const labelVPad = Math.round(fontSize * LABEL_VPAD_RATIO);
+      const labelHPad = Math.round(fontSize * LABEL_HPAD_RATIO);
+      const cornerR   = Math.round(fontSize * CORNER_RADIUS_RATIO);
 
+      // Word-wrap within label inner width.
+      const maxTextW = imgW - 2 * bgPad - 2 * labelHPad;
       ctx2d.font = `${fontSize}px sans-serif`;
-      const maxWidth = imgW - 2 * padding;
-      const lines    = wrapText(desc, maxWidth);
+      const lines  = wrapText(desc, maxTextW);
+      const nLines = lines.length;
 
-      const nLines   = lines.length;
-      const captionH = padding + nLines * lineHeight + Math.max(0, nLines - 1) * lineGap + padding;
-      const totalH   = imgH + 1 + captionH;
+      // Size label to widest line.
+      let maxLineW = 0;
+      for (const line of lines) {
+        const w = ctx2d.measureText(line).width;
+        if (w > maxLineW) maxLineW = w;
+      }
+      const labelW = Math.min(Math.ceil(maxLineW) + 2 * labelHPad, imgW - 2 * bgPad);
+
+      const textBlockH = nLines * lineHeight + Math.max(0, nLines - 1) * lineGap;
+      const labelH  = labelVPad + textBlockH + labelVPad;
+      const captionH = bgPad + labelH + bgPad;
+      const totalH  = imgH + 1 + captionH;
 
       canvas.width  = imgW;
       canvas.height = totalH;
 
-      // Original image portion.
+      // Original image.
       ctx2d.drawImage(currentImage, 0, 0, imgW, imgH, 0, 0, imgW, imgH);
 
-      // Border line.
-      ctx2d.fillStyle = BORDER_COLOR;
-      ctx2d.fillRect(0, imgH, imgW, 1);
+      // Caption background (1px border + fill).
+      ctx2d.fillStyle = currentSettings.captionBackground;
+      ctx2d.fillRect(0, imgH, imgW, 1 + captionH);
 
-      // Caption background.
-      ctx2d.fillStyle = BG_COLOR;
-      ctx2d.fillRect(0, imgH + 1, imgW, captionH);
+      // Rounded label box (centred).
+      const labelX = (imgW - labelW) / 2;
+      const labelY = imgH + 1 + bgPad;
+      ctx2d.fillStyle = currentSettings.captionLabelBg;
+      fillRoundedRect(ctx2d, labelX, labelY, labelW, labelH, cornerR);
 
-      // Caption text.
-      ctx2d.fillStyle   = TEXT_COLOR;
-      ctx2d.font        = `${fontSize}px sans-serif`;
+      // Text inside label.
+      ctx2d.fillStyle    = currentSettings.captionTextColor;
+      ctx2d.font         = `${fontSize}px sans-serif`;
       ctx2d.textBaseline = 'alphabetic';
-
-      let y = imgH + 1 + padding + lineHeight;
+      const textX = labelX + labelHPad;
+      let y = labelY + labelVPad + lineHeight;
       for (const line of lines) {
-        if (line !== '') ctx2d.fillText(line, padding, y);
+        if (line !== '') ctx2d.fillText(line, textX, y);
         y += lineHeight + lineGap;
       }
     }
@@ -577,23 +652,33 @@
       // ── Settings modal ────────────────────────────────────────────────────
       rt.EventsOn('app:settings', async () => {
         const s = await window.go.main.App.GetSettings();
-        document.getElementById('setting-suffix').value    = s.saveAsSuffix;
-        document.getElementById('setting-copyright').value = s.copyrightText;
+        document.getElementById('setting-suffix').value      = s.saveAsSuffix;
+        document.getElementById('setting-copyright').value   = s.copyrightText;
+        document.getElementById('setting-text-color').value  = s.captionTextColor  || '#000000';
+        document.getElementById('setting-label-bg').value    = s.captionLabelBg    || '#ffffff';
+        document.getElementById('setting-bg-color').value    = s.captionBackground || '#0a0a0a';
         openModal('settings-modal');
       });
 
       document.getElementById('settings-save-btn').addEventListener('click', async () => {
-        const suffix    = document.getElementById('setting-suffix').value.trim() || '_caption';
-        const copyright = document.getElementById('setting-copyright').value.trim();
-        await window.go.main.App.UpdateSettings({ saveAsSuffix: suffix, copyrightText: copyright });
-        copyrightBtn.disabled = !copyright;
+        const newSettings = {
+          saveAsSuffix:      document.getElementById('setting-suffix').value.trim() || '_caption',
+          copyrightText:     document.getElementById('setting-copyright').value.trim(),
+          captionTextColor:  document.getElementById('setting-text-color').value,
+          captionLabelBg:    document.getElementById('setting-label-bg').value,
+          captionBackground: document.getElementById('setting-bg-color').value,
+        };
+        await window.go.main.App.UpdateSettings(newSettings);
+        currentSettings = newSettings;
+        copyrightBtn.disabled = !newSettings.copyrightText;
+        if (imageLoaded) renderPreview();
         closeModal('settings-modal');
         showBanner('Settings saved', 'success');
       });
 
-      // ── Copyright button ──────────────────────────────────────────────────
-      // Enable the button and load saved copyright text on startup.
+      // ── Load settings on startup ──────────────────────────────────────────
       window.go.main.App.GetSettings().then(s => {
+        currentSettings = s;
         if (s.copyrightText) copyrightBtn.disabled = false;
       });
 
