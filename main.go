@@ -27,6 +27,10 @@ func main() {
 	pcMenu.AddText("Settings…", nil, func(_ *menu.CallbackData) {
 		app.ShowSettings()
 	})
+	pcMenu.AddSeparator()
+	pcMenu.AddText("Quit PhotoCaption", keys.CmdOrCtrl("q"), func(_ *menu.CallbackData) {
+		app.QuitApp()
+	})
 
 	fileMenu := appMenu.AddSubmenu("File")
 	fileMenu.AddText("Open", keys.CmdOrCtrl("o"), func(_ *menu.CallbackData) {
@@ -37,6 +41,10 @@ func main() {
 	})
 	fileMenu.AddText("Save As", keys.Combo("s", keys.CmdOrCtrlKey, keys.ShiftKey), func(_ *menu.CallbackData) {
 		app.SaveAsFile()
+	})
+	fileMenu.AddSeparator()
+	fileMenu.AddText("Close", keys.CmdOrCtrl("w"), func(_ *menu.CallbackData) {
+		app.CloseFile()
 	})
 
 	err := wails.Run(&options.App{

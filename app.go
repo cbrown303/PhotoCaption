@@ -64,6 +64,30 @@ func (a *App) UpdateSettings(s Settings) error {
 	return saveSettings(s)
 }
 
+// QuitApp checks for unsaved changes via the frontend before quitting.
+func (a *App) QuitApp() {
+	runtime.EventsEmit(a.ctx, "app:quitRequest")
+}
+
+// ConfirmQuit exits the application.
+func (a *App) ConfirmQuit() {
+	runtime.Quit(a.ctx)
+}
+
+// CloseFile checks for unsaved changes via the frontend before closing.
+func (a *App) CloseFile() {
+	if a.currentFile == "" {
+		return
+	}
+	runtime.EventsEmit(a.ctx, "file:closeRequest")
+}
+
+// ConfirmClose clears the current file and signals the frontend to reset the UI.
+func (a *App) ConfirmClose() {
+	a.currentFile = ""
+	runtime.EventsEmit(a.ctx, "file:closed")
+}
+
 // ShowAbout signals the frontend to open the About modal.
 func (a *App) ShowAbout() {
 	runtime.EventsEmit(a.ctx, "app:about")

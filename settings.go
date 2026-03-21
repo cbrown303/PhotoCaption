@@ -10,6 +10,7 @@ import (
 type Settings struct {
 	SaveAsSuffix      string `json:"saveAsSuffix"`
 	CopyrightText     string `json:"copyrightText"`
+	CaptionFontSize   int    `json:"captionFontSize"`
 	CaptionTextColor  string `json:"captionTextColor"`
 	CaptionLabelBg    string `json:"captionLabelBg"`
 	CaptionBackground string `json:"captionBackground"`
@@ -19,6 +20,7 @@ func defaultSettings() Settings {
 	return Settings{
 		SaveAsSuffix:      "_caption",
 		CopyrightText:     "",
+		CaptionFontSize:   0,
 		CaptionTextColor:  "#000000",
 		CaptionLabelBg:    "#ffffff",
 		CaptionBackground: "#0a0a0a",

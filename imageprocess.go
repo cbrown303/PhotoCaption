@@ -115,7 +115,10 @@ func AppendCaptionToImage(filePath string, origHeight int, description string, o
 	bgColor   := parseHexColor(s.CaptionBackground)
 
 	// Derive caption metrics proportional to image width.
-	fontSize   := math.Max(fontSizeMin, float64(imgW)*fontSizePercent)
+	fontSize := math.Max(fontSizeMin, float64(imgW)*fontSizePercent)
+	if s.CaptionFontSize > 0 {
+		fontSize = float64(s.CaptionFontSize)
+	}
 	bgPad      := int(math.Round(float64(imgW) * paddingPercent))
 	lineGap    := max(2, int(math.Round(float64(imgW)*lineGapPercent)))
 	lineHeight := int(math.Ceil(fontSize * 1.2))

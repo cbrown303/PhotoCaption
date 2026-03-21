@@ -46,3 +46,5 @@ You are free to use, copy, and modify this software provided that:
 ## Future Enhancements
 * Support other image formats. Possibly tiff, bmp, gif and more.
 * Allow to easily use the caption text as the file name.
+* Add a file list in the window pane to navigate from file to file.
+* Allow the user to use a different font of their choosing.

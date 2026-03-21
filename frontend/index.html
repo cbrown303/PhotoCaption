@@ -351,6 +351,23 @@
     </div>
   </div>
 
+  <!-- ── Unsaved-changes modal ───────────────────────────────────────────── -->
+  <div id="close-confirm-modal" class="modal-overlay" style="display:none" data-nodismiss="true">
+    <div class="modal-dialog" style="width:360px">
+      <div class="modal-header">
+        <h2>Unsaved Changes</h2>
+      </div>
+      <div class="modal-body">
+        <p id="close-confirm-msg" style="font-size:14px;color:#e2e8f0;line-height:1.6"></p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="close-cancel-btn">Cancel</button>
+        <button class="btn-secondary" id="close-discard-btn">Don't Save</button>
+        <button class="btn-primary"   id="close-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── About modal ─────────────────────────────────────────────────────── -->
   <div id="about-modal" class="modal-overlay" style="display:none">
     <div class="modal-dialog">
@@ -370,18 +387,17 @@
         <button class="modal-close" onclick="closeModal('settings-modal')">&times;</button>
       </div>
       <div class="modal-body">
-        <div class="settings-section-label">Save As Suffix</div>
-        <input id="setting-suffix" class="settings-input" type="text" />
-        <div class="settings-hint">
-          Suffix appended to the filename when using Save As —
-          e.g. <em>photo<strong style="color:#9ca3af">_caption</strong>.jpg</em>
+        <div class="settings-section-label">Caption</div>
+        <div class="color-row" style="margin-bottom:6px">
+          <span>Font Size (px)</span>
+          <input type="number" id="setting-font-size" min="8" max="200"
+            placeholder="Auto"
+            style="width:80px;background:#111827;color:#e2e8f0;border:1px solid #374151;
+                   border-radius:6px;padding:4px 8px;font-size:13px;outline:none;text-align:right">
         </div>
-
-        <div class="settings-section-label">Copyright Template</div>
-        <textarea id="setting-copyright" class="settings-input" rows="3"
-          maxlength="500" placeholder="e.g. © 2024 Your Name. All rights reserved."
-          style="resize:vertical;line-height:1.5"></textarea>
-        <div class="settings-section-label">Caption Colors</div>
+        <div class="settings-hint" style="margin-bottom:10px">
+          Leave blank for auto-size (scales with image width).
+        </div>
         <div class="color-row">
           <span>Letter Color</span>
           <input type="color" id="setting-text-color" value="#000000">
@@ -394,7 +410,17 @@
           <span>Background Color</span>
           <input type="color" id="setting-bg-color" value="#0a0a0a">
         </div>
+        <div class="settings-section-label">Save As Suffix</div>
+        <input id="setting-suffix" class="settings-input" type="text" />
+        <div class="settings-hint">
+          Suffix appended to the filename when using Save As —
+          e.g. <em>photo<strong style="color:#9ca3af">_caption</strong>.jpg</em>
+        </div>
 
+        <div class="settings-section-label">Copyright Template</div>
+        <textarea id="setting-copyright" class="settings-input" rows="3"
+          maxlength="500" placeholder="e.g. © 2024 Your Name. All rights reserved."
+          style="resize:vertical;line-height:1.5"></textarea>
         <div class="settings-hint">
           Inserted into the caption field when you click <em>© Insert Copyright</em>.<br>
           <strong style="color:#9ca3af">Typing the © symbol:</strong><br>
@@ -415,9 +441,11 @@
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
     function openURL(url)   { window.runtime && window.runtime.BrowserOpenURL(url); }
 
-    // Close modal when clicking the dark overlay behind the dialog.
+    // Close modal when clicking the dark overlay (skipped for data-nodismiss modals).
     document.querySelectorAll('.modal-overlay').forEach(el => {
-      el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); });
+      el.addEventListener('click', e => {
+        if (e.target === el && el.dataset.nodismiss !== 'true') closeModal(el.id);
+      });
     });
 
     // ── Caption constants (must mirror imageprocess.go) ──────────────────────
@@ -453,9 +481,12 @@
     }
 
     // ── State ─────────────────────────────────────────────────────────────────
-    let currentImage  = null;   // HTMLImageElement
-    let originalHeight = 0;     // stored pixel height (0 = no prior caption)
-    let imageLoaded   = false;
+    let currentImage      = null;   // HTMLImageElement
+    let originalHeight    = 0;      // stored pixel height (0 = no prior caption)
+    let imageLoaded       = false;
+    let isDirty           = false;  // true when caption changed since last save
+    let savedDescription  = '';     // caption text at last save/open
+    let pendingAction     = null;   // 'close' | 'quit' when Save→action is in flight
 
     // ── DOM refs ──────────────────────────────────────────────────────────────
     const canvas        = document.getElementById('canvas');
@@ -467,8 +498,11 @@
     const placeholder   = document.getElementById('placeholder');
     const copyrightBtn  = document.getElementById('copyright-btn');
 
-    // ── Character counter ────────────────────────────────────────────────────
-    description.addEventListener('input', updateCharCounter);
+    // ── Character counter + dirty tracking ───────────────────────────────────
+    description.addEventListener('input', () => {
+      updateCharCounter();
+      isDirty = (description.value !== savedDescription);
+    });
     function updateCharCounter() {
       const len = description.value.length;
       charCounter.textContent = `${len} / 500`;
@@ -517,7 +551,9 @@
       }
 
       // Derive caption metrics — mirrors imageprocess.go constants.
-      const fontSize  = Math.max(FONT_SIZE_MIN, imgW * FONT_SIZE_PERCENT);
+      const fontSize  = (currentSettings.captionFontSize > 0)
+        ? currentSettings.captionFontSize
+        : Math.max(FONT_SIZE_MIN, imgW * FONT_SIZE_PERCENT);
       const bgPad     = Math.round(imgW * PADDING_PERCENT);
       const lineGap   = Math.max(2, Math.round(imgW * LINE_GAP_PERCENT));
       const lineHeight = Math.ceil(fontSize * 1.2);
@@ -607,6 +643,8 @@
 
       rt.EventsOn('metadata:description', (desc) => {
         description.value = desc || '';
+        savedDescription  = description.value;
+        isDirty           = false;
         updateCharCounter();
       });
 
@@ -629,8 +667,63 @@
         window.go.main.App.SaveWithDescription(description.value);
       });
 
-      rt.EventsOn('save:success', () => showBanner('Saved successfully', 'success'));
+      rt.EventsOn('save:success', () => {
+        savedDescription = description.value;
+        isDirty = false;
+        showBanner('Saved successfully', 'success');
+        if (pendingAction === 'close') { pendingAction = null; window.go.main.App.ConfirmClose(); }
+        else if (pendingAction === 'quit') { pendingAction = null; window.go.main.App.ConfirmQuit(); }
+      });
       rt.EventsOn('save:error',   (msg) => showBanner('Save failed: ' + msg, 'error'));
+
+      // ── Close / unsaved-changes flow ─────────────────────────────────────
+      rt.EventsOn('file:closeRequest', () => {
+        if (!isDirty) { window.go.main.App.ConfirmClose(); return; }
+        pendingAction = 'close';
+        document.getElementById('close-confirm-msg').textContent =
+          'You have unsaved changes. Do you want to save before closing?';
+        openModal('close-confirm-modal');
+      });
+
+      rt.EventsOn('app:quitRequest', () => {
+        if (!isDirty) { window.go.main.App.ConfirmQuit(); return; }
+        pendingAction = 'quit';
+        document.getElementById('close-confirm-msg').textContent =
+          'You have unsaved changes. Do you want to save before quitting?';
+        openModal('close-confirm-modal');
+      });
+
+      rt.EventsOn('file:closed', () => {
+        currentImage     = null;
+        imageLoaded      = false;
+        originalHeight   = 0;
+        isDirty          = false;
+        savedDescription = '';
+        description.value = '';
+        updateCharCounter();
+        applyBtn.disabled = true;
+        canvas.style.display      = 'none';
+        placeholder.style.display = '';
+      });
+
+      document.getElementById('close-save-btn').addEventListener('click', () => {
+        closeModal('close-confirm-modal');
+        window.go.main.App.SaveFile(); // save:success will fire pendingAction
+      });
+
+      document.getElementById('close-discard-btn').addEventListener('click', () => {
+        closeModal('close-confirm-modal');
+        const action = pendingAction;
+        pendingAction = null;
+        isDirty = false;
+        if (action === 'quit') window.go.main.App.ConfirmQuit();
+        else window.go.main.App.ConfirmClose();
+      });
+
+      document.getElementById('close-cancel-btn').addEventListener('click', () => {
+        pendingAction = null;
+        closeModal('close-confirm-modal');
+      });
 
       // ── About modal ───────────────────────────────────────────────────────
       rt.EventsOn('app:about', async () => {
@@ -654,6 +747,7 @@
         const s = await window.go.main.App.GetSettings();
         document.getElementById('setting-suffix').value      = s.saveAsSuffix;
         document.getElementById('setting-copyright').value   = s.copyrightText;
+        document.getElementById('setting-font-size').value   = s.captionFontSize > 0 ? s.captionFontSize : '';
         document.getElementById('setting-text-color').value  = s.captionTextColor  || '#000000';
         document.getElementById('setting-label-bg').value    = s.captionLabelBg    || '#ffffff';
         document.getElementById('setting-bg-color').value    = s.captionBackground || '#0a0a0a';
@@ -661,9 +755,11 @@
       });
 
       document.getElementById('settings-save-btn').addEventListener('click', async () => {
+        const fontSizeVal = parseInt(document.getElementById('setting-font-size').value, 10);
         const newSettings = {
           saveAsSuffix:      document.getElementById('setting-suffix').value.trim() || '_caption',
           copyrightText:     document.getElementById('setting-copyright').value.trim(),
+          captionFontSize:   isNaN(fontSizeVal) ? 0 : fontSizeVal,
           captionTextColor:  document.getElementById('setting-text-color').value,
           captionLabelBg:    document.getElementById('setting-label-bg').value,
           captionBackground: document.getElementById('setting-bg-color').value,
