@@ -29,6 +29,28 @@
       width: 70%;
       background: #0a0a0a;
       display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #file-info {
+      flex-shrink: 0;
+      background: #111827;
+      border-bottom: 1px solid #1f2937;
+      padding: 6px 14px;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-height: 31px;
+    }
+
+    #file-info .file-dir  { color: #4b5563; }
+    #file-info .file-name { color: #d1d5db; font-weight: 500; }
+
+    #canvas-area {
+      flex: 1;
+      display: flex;
       align-items: center;
       justify-content: center;
       overflow: hidden;
@@ -331,10 +353,13 @@
 <body>
   <div id="app">
     <div id="canvas-panel">
-      <canvas id="canvas"></canvas>
-      <div id="placeholder">
-        <h2>No image open</h2>
-        <p>File → Open  (⌘O / Ctrl+O)</p>
+      <div id="file-info"></div>
+      <div id="canvas-area">
+        <canvas id="canvas"></canvas>
+        <div id="placeholder">
+          <h2>No image open</h2>
+          <p>File → Open  (⌘O / Ctrl+O)</p>
+        </div>
       </div>
     </div>
 
@@ -497,6 +522,7 @@
     const saveBanner    = document.getElementById('save-banner');
     const placeholder   = document.getElementById('placeholder');
     const copyrightBtn  = document.getElementById('copyright-btn');
+    const fileInfo      = document.getElementById('file-info');
 
     // ── Character counter + dirty tracking ───────────────────────────────────
     description.addEventListener('input', () => {
@@ -656,7 +682,11 @@
           applyBtn.disabled  = false;
           canvas.style.display = 'block';
           placeholder.style.display = 'none';
-          renderPreview();
+          // Show the file exactly as it exists on disk.
+          // renderPreview() is only called when the user clicks Apply Caption.
+          canvas.width  = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          ctx2d.drawImage(img, 0, 0);
         };
         img.src = dataURL;
       });
@@ -677,6 +707,15 @@
       rt.EventsOn('save:error',   (msg) => showBanner('Save failed: ' + msg, 'error'));
 
       // ── Close / unsaved-changes flow ─────────────────────────────────────
+      rt.EventsOn('file:path', (path) => {
+        if (!path) { fileInfo.innerHTML = ''; return; }
+        const lastSep = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        const dir  = path.substring(0, lastSep + 1);
+        const name = path.substring(lastSep + 1);
+        fileInfo.innerHTML =
+          `<span class="file-dir">${dir}</span><span class="file-name">${name}</span>`;
+      });
+
       rt.EventsOn('file:closeRequest', () => {
         if (!isDirty) { window.go.main.App.ConfirmClose(); return; }
         pendingAction = 'close';
@@ -783,7 +822,7 @@
         if (!s.copyrightText) return;
         description.value = s.copyrightText;
         updateCharCounter();
-        renderPreview();
+        isDirty = (description.value !== savedDescription);
       });
     });
   </script>

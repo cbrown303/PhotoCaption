@@ -42,7 +42,7 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) GetAppInfo() AppInfo {
 	return AppInfo{
 		Name:    "PhotoCaption",
-		Version: "0.1.0",
+		Version: "0.2.0",
 		Author:  "Christopher Brown",
 		GitHub:  "https://github.com/cbrown303/PhotoCaption",
 		License: "https://github.com/cbrown303/PhotoCaption/blob/main/LICENSE",
@@ -85,6 +85,7 @@ func (a *App) CloseFile() {
 // ConfirmClose clears the current file and signals the frontend to reset the UI.
 func (a *App) ConfirmClose() {
 	a.currentFile = ""
+	runtime.EventsEmit(a.ctx, "file:path", "")
 	runtime.EventsEmit(a.ctx, "file:closed")
 }
 
@@ -238,6 +239,8 @@ func (a *App) loadAndEmitImage(filePath string) {
 	desc, origHeight, _ := ReadMetadata(filePath)
 	runtime.EventsEmit(a.ctx, "image:originalHeight", origHeight)
 	runtime.EventsEmit(a.ctx, "metadata:description", desc)
+
+	runtime.EventsEmit(a.ctx, "file:path", filePath)
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {

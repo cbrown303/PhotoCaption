@@ -1,6 +1,8 @@
 # PhotoCaption
 PhotoCaption is a tool to add captions to the bottom of photo images.  This is useful for a variety of reasons but was mainly created to solve the problem of labeling genealogy photos.  This tool will leave the original photo intact and only append to the bottom of the photo the information you provide.
 
+![PhotoCaption](readme_image.png)
+
 ## Platforms
 A build for both macOS and Windows is available.  Currently, it only supports JPEG and PNG images.
 
