@@ -157,6 +157,135 @@ func WriteDescription(filePath, userDesc string, origHeight int) error {
 	return writeExifImageDescription(filePath, value)
 }
 
+// SnapshotExifSegment reads the raw APP1 EXIF segment bytes from filePath.
+// These bytes can be injected verbatim into another JPEG, completely bypassing
+// the IfdBuilder / exif.Collect code paths that fail on minimal EXIF data.
+// Returns nil if the file has no EXIF segment (not an error).
+func SnapshotExifSegment(filePath string) ([]byte, error) {
+	ext := strings.ToLower(filepath.Ext(filePath))
+	switch ext {
+	case ".jpg", ".jpeg":
+		jmp := jpegstructure.NewJpegMediaParser()
+		intfc, err := jmp.ParseFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("parse jpeg for exif snapshot: %w", err)
+		}
+		for _, seg := range intfc.(*jpegstructure.SegmentList).Segments() {
+			if seg.MarkerId == jpegstructure.MARKER_APP1 &&
+				len(seg.Data) >= 6 &&
+				string(seg.Data[:6]) == "Exif\x00\x00" {
+				cp := make([]byte, len(seg.Data))
+				copy(cp, seg.Data)
+				fmt.Printf("[DEBUG] SnapshotExifSegment: captured %d raw bytes from %q\n", len(cp), filePath)
+				return cp, nil
+			}
+		}
+		fmt.Printf("[DEBUG] SnapshotExifSegment: no EXIF APP1 segment found in %q\n", filePath)
+		return nil, nil
+	case ".png":
+		// PNG EXIF: fall back to IfdBuilder path for now.
+		pmp := pngstructure.NewPngMediaParser()
+		intfc, err := pmp.ParseFile(filePath)
+		if err != nil {
+			return nil, nil
+		}
+		_, rawExif, err := intfc.(*pngstructure.ChunkSlice).Exif()
+		if err != nil {
+			return nil, nil
+		}
+		cp := make([]byte, len(rawExif))
+		copy(cp, rawExif)
+		return cp, nil
+	default:
+		return nil, nil
+	}
+}
+
+// InjectExifSegment writes previously-snapshotted raw EXIF bytes back into
+// filePath after a pixel-only rewrite has stripped the EXIF segment.
+// For JPEG, the bytes are re-inserted as the APP1 segment immediately after SOI.
+// For PNG, the bytes are written via the IfdBuilder path.
+func InjectExifSegment(filePath string, app1Data []byte) error {
+	if len(app1Data) == 0 {
+		fmt.Printf("[DEBUG] InjectExifSegment: nothing to inject into %q\n", filePath)
+		return nil
+	}
+
+	// Debug: show what tags are inside the snapshot.
+	if len(app1Data) >= 6 {
+		if tags, _, err := exif.GetFlatExifData(app1Data[6:], nil); err == nil {
+			fmt.Printf("[EXIF] InjectExifSegment: injecting %d tags into %q:\n", len(tags), filePath)
+			for _, tag := range tags {
+				fmt.Printf("  %-40s %v\n", tag.TagName, tag.Value)
+			}
+		}
+	}
+
+	ext := strings.ToLower(filepath.Ext(filePath))
+	switch ext {
+	case ".jpg", ".jpeg":
+		jmp := jpegstructure.NewJpegMediaParser()
+		intfc, err := jmp.ParseFile(filePath)
+		if err != nil {
+			return fmt.Errorf("parse jpeg for exif inject: %w", err)
+		}
+		sl := intfc.(*jpegstructure.SegmentList)
+		segs := sl.Segments()
+
+		// Replace an existing APP1/EXIF segment if present.
+		for _, seg := range segs {
+			if seg.MarkerId == jpegstructure.MARKER_APP1 &&
+				len(seg.Data) >= 6 &&
+				string(seg.Data[:6]) == "Exif\x00\x00" {
+				seg.Data = app1Data
+				return atomicWrite(filePath, func(f *os.File) error { return sl.Write(f) })
+			}
+		}
+
+		// No existing EXIF segment — build a new SegmentList with the
+		// EXIF APP1 inserted right after SOI (position 1).
+		newSeg := &jpegstructure.Segment{MarkerId: jpegstructure.MARKER_APP1, Data: app1Data}
+		rebuilt := make([]*jpegstructure.Segment, 0, len(segs)+1)
+		if len(segs) > 0 {
+			rebuilt = append(rebuilt, segs[0]) // SOI
+		}
+		rebuilt = append(rebuilt, newSeg)
+		if len(segs) > 1 {
+			rebuilt = append(rebuilt, segs[1:]...)
+		}
+		newSl := jpegstructure.NewSegmentList(rebuilt)
+		return atomicWrite(filePath, func(f *os.File) error { return newSl.Write(f) })
+
+	case ".png":
+		// PNG: re-parse raw bytes into an IfdBuilder and use SetExif.
+		im, err := exifcommon.NewIfdMappingWithStandard()
+		if err != nil {
+			return err
+		}
+		ti := exif.NewTagIndex()
+		if err = exif.LoadStandardTags(ti); err != nil {
+			return err
+		}
+		_, index, err := exif.Collect(im, ti, app1Data)
+		if err != nil {
+			return fmt.Errorf("collect png exif for inject: %w", err)
+		}
+		rootIb := exif.NewIfdBuilderFromExistingChain(index.RootIfd)
+		pmp := pngstructure.NewPngMediaParser()
+		intfc, err := pmp.ParseFile(filePath)
+		if err != nil {
+			return err
+		}
+		cs := intfc.(*pngstructure.ChunkSlice)
+		if err = cs.SetExif(rootIb); err != nil {
+			return fmt.Errorf("inject exif into png: %w", err)
+		}
+		return atomicWrite(filePath, func(f *os.File) error { return cs.WriteTo(f) })
+	default:
+		return nil
+	}
+}
+
 // ─── internal helpers ───────────────────────────────────────────────────────
 
 func getRawImageDescription(filePath string) (string, error) {
@@ -318,135 +447,6 @@ func writePngExifDescription(filePath, value string) error {
 
 // exifPrefix is the 6-byte marker that starts every JPEG APP1 EXIF segment.
 var exifSegPrefix = []byte("Exif\x00\x00")
-
-// SnapshotExifSegment reads the raw APP1 EXIF segment bytes from filePath.
-// These bytes can be injected verbatim into another JPEG, completely bypassing
-// the IfdBuilder / exif.Collect code paths that fail on minimal EXIF data.
-// Returns nil if the file has no EXIF segment (not an error).
-func SnapshotExifSegment(filePath string) ([]byte, error) {
-	ext := strings.ToLower(filepath.Ext(filePath))
-	switch ext {
-	case ".jpg", ".jpeg":
-		jmp := jpegstructure.NewJpegMediaParser()
-		intfc, err := jmp.ParseFile(filePath)
-		if err != nil {
-			return nil, fmt.Errorf("parse jpeg for exif snapshot: %w", err)
-		}
-		for _, seg := range intfc.(*jpegstructure.SegmentList).Segments() {
-			if seg.MarkerId == jpegstructure.MARKER_APP1 &&
-				len(seg.Data) >= 6 &&
-				string(seg.Data[:6]) == "Exif\x00\x00" {
-				cp := make([]byte, len(seg.Data))
-				copy(cp, seg.Data)
-				fmt.Printf("[DEBUG] SnapshotExifSegment: captured %d raw bytes from %q\n", len(cp), filePath)
-				return cp, nil
-			}
-		}
-		fmt.Printf("[DEBUG] SnapshotExifSegment: no EXIF APP1 segment found in %q\n", filePath)
-		return nil, nil
-	case ".png":
-		// PNG EXIF: fall back to IfdBuilder path for now.
-		pmp := pngstructure.NewPngMediaParser()
-		intfc, err := pmp.ParseFile(filePath)
-		if err != nil {
-			return nil, nil
-		}
-		_, rawExif, err := intfc.(*pngstructure.ChunkSlice).Exif()
-		if err != nil {
-			return nil, nil
-		}
-		cp := make([]byte, len(rawExif))
-		copy(cp, rawExif)
-		return cp, nil
-	default:
-		return nil, nil
-	}
-}
-
-// InjectExifSegment writes previously-snapshotted raw EXIF bytes back into
-// filePath after a pixel-only rewrite has stripped the EXIF segment.
-// For JPEG, the bytes are re-inserted as the APP1 segment immediately after SOI.
-// For PNG, the bytes are written via the IfdBuilder path.
-func InjectExifSegment(filePath string, app1Data []byte) error {
-	if len(app1Data) == 0 {
-		fmt.Printf("[DEBUG] InjectExifSegment: nothing to inject into %q\n", filePath)
-		return nil
-	}
-
-	// Debug: show what tags are inside the snapshot.
-	if len(app1Data) >= 6 {
-		if tags, _, err := exif.GetFlatExifData(app1Data[6:], nil); err == nil {
-			fmt.Printf("[EXIF] InjectExifSegment: injecting %d tags into %q:\n", len(tags), filePath)
-			for _, tag := range tags {
-				fmt.Printf("  %-40s %v\n", tag.TagName, tag.Value)
-			}
-		}
-	}
-
-	ext := strings.ToLower(filepath.Ext(filePath))
-	switch ext {
-	case ".jpg", ".jpeg":
-		jmp := jpegstructure.NewJpegMediaParser()
-		intfc, err := jmp.ParseFile(filePath)
-		if err != nil {
-			return fmt.Errorf("parse jpeg for exif inject: %w", err)
-		}
-		sl := intfc.(*jpegstructure.SegmentList)
-		segs := sl.Segments()
-
-		// Replace an existing APP1/EXIF segment if present.
-		for _, seg := range segs {
-			if seg.MarkerId == jpegstructure.MARKER_APP1 &&
-				len(seg.Data) >= 6 &&
-				string(seg.Data[:6]) == "Exif\x00\x00" {
-				seg.Data = app1Data
-				return atomicWrite(filePath, func(f *os.File) error { return sl.Write(f) })
-			}
-		}
-
-		// No existing EXIF segment — build a new SegmentList with the
-		// EXIF APP1 inserted right after SOI (position 1).
-		newSeg := &jpegstructure.Segment{MarkerId: jpegstructure.MARKER_APP1, Data: app1Data}
-		rebuilt := make([]*jpegstructure.Segment, 0, len(segs)+1)
-		if len(segs) > 0 {
-			rebuilt = append(rebuilt, segs[0]) // SOI
-		}
-		rebuilt = append(rebuilt, newSeg)
-		if len(segs) > 1 {
-			rebuilt = append(rebuilt, segs[1:]...)
-		}
-		newSl := jpegstructure.NewSegmentList(rebuilt)
-		return atomicWrite(filePath, func(f *os.File) error { return newSl.Write(f) })
-
-	case ".png":
-		// PNG: re-parse raw bytes into an IfdBuilder and use SetExif.
-		im, err := exifcommon.NewIfdMappingWithStandard()
-		if err != nil {
-			return err
-		}
-		ti := exif.NewTagIndex()
-		if err = exif.LoadStandardTags(ti); err != nil {
-			return err
-		}
-		_, index, err := exif.Collect(im, ti, app1Data)
-		if err != nil {
-			return fmt.Errorf("collect png exif for inject: %w", err)
-		}
-		rootIb := exif.NewIfdBuilderFromExistingChain(index.RootIfd)
-		pmp := pngstructure.NewPngMediaParser()
-		intfc, err := pmp.ParseFile(filePath)
-		if err != nil {
-			return err
-		}
-		cs := intfc.(*pngstructure.ChunkSlice)
-		if err = cs.SetExif(rootIb); err != nil {
-			return fmt.Errorf("inject exif into png: %w", err)
-		}
-		return atomicWrite(filePath, func(f *os.File) error { return cs.WriteTo(f) })
-	default:
-		return nil
-	}
-}
 
 // patchImageDescriptionInTiff locates the ImageDescription tag (0x010E) in
 // rawTiff (raw TIFF bytes, NOT including the "Exif\x00\x00" JPEG prefix),

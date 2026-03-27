@@ -34,10 +34,12 @@ type App struct {
 	settings    pcapp.Settings
 }
 
+// NewApp returns a pointer to the new instance of the App
 func NewApp() *App {
 	return &App{}
 }
 
+// startup uses the context and loads settings find locally on disk
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.settings = pcapp.LoadSettings()
@@ -262,6 +264,7 @@ func (a *App) loadAndEmitImage(filePath string) {
 	runtime.EventsEmit(a.ctx, "image:loaded", dataURL)
 }
 
+// copyFile duplicates the file on local storage
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {

@@ -3,24 +3,6 @@ PhotoCaption is a tool to add captions to the bottom of photo images.  This is u
 
 ![PhotoCaption](readme_image.png)
 
-## Platforms
-A build for both macOS and Windows is available. Currently, it only supports JPEG and PNG images.
-
-### macOS
-Because PhotoCaption is not yet notarized through Apple, macOS may block it from opening the first time. To run it:
-1. Open **Finder** and locate the downloaded app
-2. Right-click (or Control-click) the app and select **Open**
-3. Click **Open** in the dialog that appears
-
-You only need to do this once. After that the app opens normally.
-
-### Windows
-Because PhotoCaption is not yet code-signed, Windows SmartScreen may show a warning when you first run it. To run it:
-1. Click **More info** on the SmartScreen dialog
-2. Click **Run anyway**
-
-You only need to do this once.
-
 ## Use Cases
 
 ### Personal & Family
@@ -45,6 +27,24 @@ You only need to do this once.
 - **Insurance documentation** — describe damaged items with date and context
 - **Contractor work logs** — photo plus description of work completed
 - **Inventory tracking** — label equipment, serial numbers, and condition
+
+## Platforms
+A build for both macOS and Windows is available. Currently, it only supports JPEG and PNG images.
+
+### macOS
+Because PhotoCaption is not yet notarized through Apple, macOS may block it from opening the first time. To run it:
+1. Open **Finder** and locate the downloaded app
+2. Right-click (or Control-click) the app and select **Open**
+3. Click **Open** in the dialog that appears
+
+You only need to do this once. After that the app opens normally.
+
+### Windows
+Because PhotoCaption is not yet code-signed, Windows SmartScreen may show a warning when you first run it. To run it:
+1. Click **More info** on the SmartScreen dialog
+2. Click **Run anyway**
+
+You only need to do this once.
 
 ## Acknowledgements
 Built with the assistance of [Claude](https://claude.ai) by Anthropic.
