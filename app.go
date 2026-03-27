@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Christopher Brown
+// SPDX-License-Identifier: AGPL-3.0-only
+
 package main
 
 import (
@@ -8,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	pcapp "PhotoCaption/app"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -26,7 +31,7 @@ type AppInfo struct {
 type App struct {
 	ctx         context.Context
 	currentFile string
-	settings    Settings
+	settings    pcapp.Settings
 }
 
 func NewApp() *App {
@@ -35,7 +40,7 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.settings = loadSettings()
+	a.settings = pcapp.LoadSettings()
 }
 
 // GetAppInfo returns static information shown in the About dialog.
@@ -51,17 +56,17 @@ func (a *App) GetAppInfo() AppInfo {
 }
 
 // GetSettings returns the current user settings.
-func (a *App) GetSettings() Settings {
+func (a *App) GetSettings() pcapp.Settings {
 	return a.settings
 }
 
 // UpdateSettings persists new settings and applies them immediately.
-func (a *App) UpdateSettings(s Settings) error {
+func (a *App) UpdateSettings(s pcapp.Settings) error {
 	if s.SaveAsSuffix == "" {
 		s.SaveAsSuffix = "_caption"
 	}
 	a.settings = s
-	return saveSettings(s)
+	return pcapp.SaveSettings(s)
 }
 
 // QuitApp checks for unsaved changes via the frontend before quitting.
@@ -172,7 +177,7 @@ func (a *App) SaveWithDescription(description string) {
 
 	// Step 1 — snapshot raw EXIF bytes before any file writes.
 	// This captures the pristine original camera metadata (Make, Model, GPS, …).
-	origExif, err := SnapshotExifSegment(a.currentFile)
+	origExif, err := pcapp.SnapshotExifSegment(a.currentFile)
 	if err != nil {
 		runtime.EventsEmit(a.ctx, "save:error", fmt.Sprintf("Failed to snapshot EXIF: %v", err))
 		return
@@ -181,13 +186,13 @@ func (a *App) SaveWithDescription(description string) {
 
 	// Step 2 — determine the original image height.
 	// On first save origHeight is 0; derive it from the pixel dimensions.
-	origHeight, err := ReadOriginalHeight(a.currentFile)
+	origHeight, err := pcapp.ReadOriginalHeight(a.currentFile)
 	if err != nil {
 		runtime.EventsEmit(a.ctx, "save:error", fmt.Sprintf("Failed to read metadata: %v", err))
 		return
 	}
 	if origHeight == 0 {
-		img, err := loadImage(a.currentFile)
+		img, err := pcapp.LoadImage(a.currentFile)
 		if err != nil {
 			runtime.EventsEmit(a.ctx, "save:error", fmt.Sprintf("Failed to load image: %v", err))
 			return
@@ -200,7 +205,7 @@ func (a *App) SaveWithDescription(description string) {
 	// UpdateExifDescription modifies only that one tag; every other byte is
 	// preserved. The result is used in step 4 so no separate WriteDescription
 	// call is ever needed.
-	updatedExif, exifPatchErr := UpdateExifDescription(origExif, description, origHeight)
+	updatedExif, exifPatchErr := pcapp.UpdateExifDescription(origExif, description, origHeight)
 	if exifPatchErr != nil {
 		// Tag not yet present (first save of an original photo) or no EXIF at all.
 		// Fall back to using the unmodified snapshot; WriteDescription (step 5)
@@ -214,7 +219,7 @@ func (a *App) SaveWithDescription(description string) {
 	// Step 4 — pixel write + EXIF inject in one pass.
 	// AppendCaptionToImage crops to origHeight, renders the caption, saves the
 	// pixel data (which strips EXIF), then injects updatedExif back into the file.
-	if err := AppendCaptionToImage(a.currentFile, origHeight, description, updatedExif, a.settings); err != nil {
+	if err := pcapp.AppendCaptionToImage(a.currentFile, origHeight, description, updatedExif, a.settings); err != nil {
 		runtime.EventsEmit(a.ctx, "save:error", fmt.Sprintf("Failed to save image: %v", err))
 		return
 	}
@@ -223,7 +228,7 @@ func (a *App) SaveWithDescription(description string) {
 	// absent), write it now via the IfdBuilder path. The injected EXIF from
 	// step 4 is still on disk so all original tags are preserved.
 	if exifPatchErr != nil {
-		if err := WriteDescription(a.currentFile, description, origHeight); err != nil {
+		if err := pcapp.WriteDescription(a.currentFile, description, origHeight); err != nil {
 			fmt.Printf("warning: could not write description EXIF: %v\n", err)
 		}
 	}
@@ -236,7 +241,7 @@ func (a *App) SaveWithDescription(description string) {
 // loadAndEmitImage reads filePath, emits image events so the frontend refreshes.
 func (a *App) loadAndEmitImage(filePath string) {
 	// Emit metadata first so the values are set before the image onload fires.
-	desc, origHeight, _ := ReadMetadata(filePath)
+	desc, origHeight, _ := pcapp.ReadMetadata(filePath)
 	runtime.EventsEmit(a.ctx, "image:originalHeight", origHeight)
 	runtime.EventsEmit(a.ctx, "metadata:description", desc)
 

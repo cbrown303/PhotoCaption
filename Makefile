@@ -14,8 +14,19 @@ build:        ## Build macOS production app into build/bin/
 build-windows: ## Cross-compile Windows .exe into build/bin/  (requires: brew install mingw-w64)
 	CC=x86_64-w64-mingw32-gcc $(WAILS) build -platform windows/amd64
 
+.PHONY: icon
+icon:         ## Regenerate build/windows/icon.ico from build/appicon.png (requires imagemagick)
+	magick convert build/appicon.png \
+	  \( -clone 0 -resize 256x256 \) \
+	  \( -clone 0 -resize 128x128 \) \
+	  \( -clone 0 -resize 64x64 \) \
+	  \( -clone 0 -resize 48x48 \) \
+	  \( -clone 0 -resize 32x32 \) \
+	  \( -clone 0 -resize 16x16 \) \
+	  -delete 0 build/windows/icon.ico
+
 .PHONY: build-all
-build-all:    ## Build both macOS and Windows into build/bin/
+build-all: icon ## Build both macOS and Windows into build/bin/ (regenerates icon first)
 	$(WAILS) build -platform darwin/amd64
 	CC=x86_64-w64-mingw32-gcc $(WAILS) build -platform windows/amd64
 

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Christopher Brown
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // exifdump prints every EXIF tag found in a JPEG or PNG file.
 // Usage: go run ./cmd/exifdump <image-file>
 package main

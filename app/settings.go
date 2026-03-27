@@ -1,4 +1,7 @@
-package main
+// Copyright (c) 2026 Christopher Brown
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package app
 
 import (
 	"encoding/json"
@@ -35,7 +38,8 @@ func settingsFilePath() (string, error) {
 	return filepath.Join(dir, "PhotoCaption", "settings.json"), nil
 }
 
-func loadSettings() Settings {
+// LoadSettings reads the persisted settings, returning defaults on any error.
+func LoadSettings() Settings {
 	path, err := settingsFilePath()
 	if err != nil {
 		return defaultSettings()
@@ -63,7 +67,8 @@ func loadSettings() Settings {
 	return s
 }
 
-func saveSettings(s Settings) error {
+// SaveSettings persists the given settings to disk.
+func SaveSettings(s Settings) error {
 	path, err := settingsFilePath()
 	if err != nil {
 		return err

@@ -1,4 +1,7 @@
-package main
+// Copyright (c) 2026 Christopher Brown
+// SPDX-License-Identifier: AGPL-3.0-only
+
+package app
 
 import (
 	"fmt"
@@ -73,8 +76,8 @@ func drawRoundedRect(img *image.RGBA, x0, y0, x1, y1, radius int, col color.Colo
 	}
 }
 
-// loadImage decodes a JPEG or PNG from disk.
-func loadImage(filePath string) (image.Image, error) {
+// LoadImage decodes a JPEG or PNG from disk.
+func LoadImage(filePath string) (image.Image, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return nil, err
@@ -90,7 +93,7 @@ func loadImage(filePath string) (image.Image, error) {
 func AppendCaptionToImage(filePath string, origHeight int, description string, origExif []byte, s Settings) error {
 	fmt.Printf("[DEBUG] AppendCaptionToImage called — file=%q origHeight=%d exifBytes=%d\n", filePath, origHeight, len(origExif))
 
-	img, err := loadImage(filePath)
+	img, err := LoadImage(filePath)
 	if err != nil {
 		return err
 	}
