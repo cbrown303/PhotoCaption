@@ -368,7 +368,7 @@
         <div class="field-label">Description</div>
         <button id="copyright-btn" disabled title="Fill caption with your saved copyright text">© Insert Copyright</button>
       </div>
-      <textarea id="description" maxlength="500"
+      <textarea id="description" maxlength="500" disabled
         placeholder="Enter a caption for this image…"></textarea>
       <div id="char-counter">0 / 500</div>
       <button id="apply-btn" disabled>Apply Caption</button>
@@ -389,6 +389,24 @@
         <button class="btn-secondary" id="close-cancel-btn">Cancel</button>
         <button class="btn-secondary" id="close-discard-btn">Don't Save</button>
         <button class="btn-primary"   id="close-save-btn">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Save As modal ───────────────────────────────────────────────────── -->
+  <div id="saveas-modal" class="modal-overlay" style="display:none" data-nodismiss="true">
+    <div class="modal-dialog" style="width:520px">
+      <div class="modal-header">
+        <h2>Save As</h2>
+      </div>
+      <div class="modal-body">
+        <div class="settings-section-label">File Path</div>
+        <input id="saveas-input" class="settings-input" type="text" spellcheck="false" />
+        <div class="settings-hint">Enter the full path, or just a filename to save in the same folder.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="saveas-cancel-btn">Cancel</button>
+        <button class="btn-primary"   id="saveas-confirm-btn">Save</button>
       </div>
     </div>
   </div>
@@ -512,6 +530,9 @@
     let isDirty           = false;  // true when caption changed since last save
     let savedDescription  = '';     // caption text at last save/open
     let pendingAction     = null;   // 'close' | 'quit' when Save→action is in flight
+    let undoHistory       = [];     // stack of previous caption values
+    let isUndoing         = false;  // guard: prevents undo from pushing to history
+    let lastCaptionValue  = '';     // value before the most recent input event
 
     // ── DOM refs ──────────────────────────────────────────────────────────────
     const canvas        = document.getElementById('canvas');
@@ -524,8 +545,66 @@
     const copyrightBtn  = document.getElementById('copyright-btn');
     const fileInfo      = document.getElementById('file-info');
 
+    // ── Clipboard cut / copy / paste (Cmd+X/C/V · Ctrl+X/C/V) ───────────────
+    description.addEventListener('keydown', (e) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if      (e.key === 'z') { e.preventDefault(); editUndo(); }
+      else if (e.key === 'c') { e.preventDefault(); clipboardCopy(); }
+      else if (e.key === 'x') { e.preventDefault(); clipboardCut(); }
+      else if (e.key === 'v') { e.preventDefault(); clipboardPaste(); }
+    });
+
+    // ── Undo ──────────────────────────────────────────────────────────────────
+    function editUndo() {
+      if (undoHistory.length === 0) return;
+      isUndoing = true;
+      description.value = undoHistory.pop();
+      lastCaptionValue  = description.value;
+      isUndoing = false;
+      isDirty = (description.value !== savedDescription);
+      updateCharCounter();
+    }
+
+    // ── Edit menu events (Cut / Copy / Paste / Select All) ───────────────────
+    function clipboardCopy() {
+      const selected = description.value.slice(description.selectionStart, description.selectionEnd);
+      if (selected) window.go.main.App.WriteClipboard(selected);
+    }
+    function clipboardCut() {
+      const start = description.selectionStart;
+      const end   = description.selectionEnd;
+      const selected = description.value.slice(start, end);
+      if (selected) {
+        window.go.main.App.WriteClipboard(selected);
+        description.value = description.value.slice(0, start) + description.value.slice(end);
+        description.selectionStart = description.selectionEnd = start;
+        description.dispatchEvent(new Event('input'));
+      }
+    }
+    async function clipboardPaste() {
+      const text = await window.go.main.App.ReadClipboard();
+      if (text) {
+        const start = description.selectionStart;
+        const end   = description.selectionEnd;
+        description.value = description.value.slice(0, start) + text + description.value.slice(end);
+        description.selectionStart = description.selectionEnd = start + text.length;
+        description.dispatchEvent(new Event('input'));
+      }
+    }
+
+    window.runtime.EventsOn('edit:undo',      () => editUndo());
+    window.runtime.EventsOn('edit:copy',      () => clipboardCopy());
+    window.runtime.EventsOn('edit:cut',       () => clipboardCut());
+    window.runtime.EventsOn('edit:paste',     () => clipboardPaste());
+    window.runtime.EventsOn('edit:selectall', () => { description.select(); });
+
     // ── Character counter + dirty tracking ───────────────────────────────────
     description.addEventListener('input', () => {
+      if (!isUndoing) {
+        undoHistory.push(lastCaptionValue);  // save state BEFORE this change
+        if (undoHistory.length > 100) undoHistory.shift();
+        lastCaptionValue = description.value;
+      }
       updateCharCounter();
       isDirty = (description.value !== savedDescription);
     });
@@ -670,7 +749,9 @@
       rt.EventsOn('metadata:description', (desc) => {
         description.value = desc || '';
         savedDescription  = description.value;
+        lastCaptionValue  = description.value;
         isDirty           = false;
+        undoHistory       = [];
         updateCharCounter();
       });
 
@@ -679,7 +760,8 @@
         img.onload = () => {
           currentImage = img;
           imageLoaded  = true;
-          applyBtn.disabled  = false;
+          applyBtn.disabled       = false;
+          description.disabled    = false;
           canvas.style.display = 'block';
           placeholder.style.display = 'none';
           // Show the file exactly as it exists on disk.
@@ -740,7 +822,8 @@
         savedDescription = '';
         description.value = '';
         updateCharCounter();
-        applyBtn.disabled = true;
+        applyBtn.disabled    = true;
+        description.disabled = true;
         canvas.style.display      = 'none';
         placeholder.style.display = '';
       });
@@ -779,6 +862,62 @@
             <a class="about-link" href="#" onclick="openURL('${info.notices}');return false">Third-Party Notices</a>
           </div>`;
         openModal('about-modal');
+      });
+
+      // ── Save As modal ─────────────────────────────────────────────────────
+      const saveAsInput = document.getElementById('saveas-input');
+
+      rt.EventsOn('saveas:show', (defaultPath) => {
+        saveAsInput.value = defaultPath;
+        openModal('saveas-modal');
+        saveAsInput.focus();
+        // Select just the filename portion so the user can type over it easily.
+        const sep   = Math.max(defaultPath.lastIndexOf('/'), defaultPath.lastIndexOf('\\'));
+        const dotIdx = defaultPath.lastIndexOf('.');
+        saveAsInput.setSelectionRange(sep + 1, dotIdx > sep ? dotIdx : defaultPath.length);
+      });
+
+      saveAsInput.addEventListener('keydown', async (e) => {
+        if (!(e.metaKey || e.ctrlKey)) return;
+        if (e.key === 'v') {
+          e.preventDefault();
+          const text = await window.go.main.App.ReadClipboard();
+          if (text) {
+            const start = saveAsInput.selectionStart;
+            const end   = saveAsInput.selectionEnd;
+            saveAsInput.value = saveAsInput.value.slice(0, start) + text + saveAsInput.value.slice(end);
+            saveAsInput.selectionStart = saveAsInput.selectionEnd = start + text.length;
+          }
+        } else if (e.key === 'c') {
+          e.preventDefault();
+          const selected = saveAsInput.value.slice(saveAsInput.selectionStart, saveAsInput.selectionEnd);
+          if (selected) window.go.main.App.WriteClipboard(selected);
+        } else if (e.key === 'x') {
+          e.preventDefault();
+          const start = saveAsInput.selectionStart;
+          const end   = saveAsInput.selectionEnd;
+          const selected = saveAsInput.value.slice(start, end);
+          if (selected) {
+            window.go.main.App.WriteClipboard(selected);
+            saveAsInput.value = saveAsInput.value.slice(0, start) + saveAsInput.value.slice(end);
+            saveAsInput.selectionStart = saveAsInput.selectionEnd = start;
+          }
+        }
+      });
+
+      saveAsInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter')  document.getElementById('saveas-confirm-btn').click();
+        if (e.key === 'Escape') document.getElementById('saveas-cancel-btn').click();
+      });
+
+      document.getElementById('saveas-cancel-btn').addEventListener('click', () => {
+        closeModal('saveas-modal');
+      });
+
+      document.getElementById('saveas-confirm-btn').addEventListener('click', () => {
+        const path = saveAsInput.value.trim();
+        if (path) window.go.main.App.ExecuteSaveAs(path);
+        closeModal('saveas-modal');
       });
 
       // ── Settings modal ────────────────────────────────────────────────────
