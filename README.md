@@ -33,9 +33,11 @@ A build for both macOS and Windows is available. Currently, it only supports JPE
 
 ### macOS
 Because PhotoCaption is not yet notarized through Apple, macOS may block it from opening the first time. To run it:
-1. Open **Finder** and locate the downloaded app
-2. Right-click (or Control-click) the app and select **Open**
-3. Click **Open** in the dialog that appears
+1. After downloading, place the PhotoCaption applicaiton in the Application folder. (This is optional but is recommended)
+2. Attempt to run the downloaded file and you will see a dialog warning.  Doing this will help with the next step. 
+3. Open **Settings** and locate the **GateKeeper** settings under Privacy & Settings.  (Searching may help)
+4. Under the Security section, you will see a setting to allow PhotoCaption to run. 
+5. Select from the dropdown to approve running the PhotoCaption application.
 
 You only need to do this once. After that the app opens normally.
 
