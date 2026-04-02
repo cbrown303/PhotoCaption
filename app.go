@@ -45,6 +45,42 @@ func (a *App) startup(ctx context.Context) {
 	a.settings = pcapp.LoadSettings()
 }
 
+// ReadClipboard returns the current text content of the system clipboard.
+func (a *App) ReadClipboard() string {
+	text, _ := runtime.ClipboardGetText(a.ctx)
+	return text
+}
+
+// WriteClipboard writes text to the system clipboard.
+func (a *App) WriteClipboard(text string) {
+	runtime.ClipboardSetText(a.ctx, text)
+}
+
+// EmitUndo signals the frontend to undo the last text change.
+func (a *App) EmitUndo() {
+	runtime.EventsEmit(a.ctx, "edit:undo")
+}
+
+// EmitCopy signals the frontend to copy the current selection to the clipboard.
+func (a *App) EmitCopy() {
+	runtime.EventsEmit(a.ctx, "edit:copy")
+}
+
+// EmitCut signals the frontend to cut the current selection to the clipboard.
+func (a *App) EmitCut() {
+	runtime.EventsEmit(a.ctx, "edit:cut")
+}
+
+// EmitPaste signals the frontend to paste clipboard text at the cursor.
+func (a *App) EmitPaste() {
+	runtime.EventsEmit(a.ctx, "edit:paste")
+}
+
+// EmitSelectAll signals the frontend to select all text in the focused field.
+func (a *App) EmitSelectAll() {
+	runtime.EventsEmit(a.ctx, "edit:selectall")
+}
+
 // GetAppInfo returns static information shown in the About dialog.
 func (a *App) GetAppInfo() AppInfo {
 	return AppInfo{
@@ -129,7 +165,8 @@ func (a *App) SaveFile() {
 	runtime.EventsEmit(a.ctx, "save:request")
 }
 
-// SaveAsFile opens a save dialog, copies the file, then triggers a save.
+// SaveAsFile emits saveas:show with the suggested default path so the frontend
+// can display its own dialog (which supports clipboard paste).
 func (a *App) SaveAsFile() {
 	if a.currentFile == "" {
 		return
@@ -137,28 +174,23 @@ func (a *App) SaveAsFile() {
 	ext := filepath.Ext(a.currentFile)
 	base := strings.TrimSuffix(filepath.Base(a.currentFile), ext)
 	defaultName := base + a.settings.SaveAsSuffix + ext
+	defaultPath := filepath.Join(filepath.Dir(a.currentFile), defaultName)
+	runtime.EventsEmit(a.ctx, "saveas:show", defaultPath)
+}
 
-	newPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
-		Title:           "Save As",
-		DefaultFilename: defaultName,
-		Filters: []runtime.FileFilter{
-			{DisplayName: "Images (*.jpg, *.jpeg, *.png)", Pattern: "*.jpg;*.jpeg;*.png"},
-		},
-	})
-	if err != nil || newPath == "" {
+// ExecuteSaveAs copies the current file to newPath and triggers a save.
+func (a *App) ExecuteSaveAs(newPath string) {
+	if a.currentFile == "" || newPath == "" {
 		return
 	}
-
-	// Ensure extension is preserved if the user omitted it.
+	// Preserve extension if the user omitted it.
 	if filepath.Ext(newPath) == "" {
-		newPath += ext
+		newPath += filepath.Ext(a.currentFile)
 	}
-
 	if err := copyFile(a.currentFile, newPath); err != nil {
 		runtime.EventsEmit(a.ctx, "save:error", fmt.Sprintf("Failed to copy file: %v", err))
 		return
 	}
-
 	a.currentFile = newPath
 	runtime.EventsEmit(a.ctx, "save:request")
 }

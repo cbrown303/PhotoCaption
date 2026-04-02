@@ -50,6 +50,14 @@ func main() {
 		app.CloseFile()
 	})
 
+	editMenu := appMenu.AddSubmenu("Edit")
+	editMenu.AddText("Undo", nil, func(_ *menu.CallbackData) { app.EmitUndo() })
+	editMenu.AddSeparator()
+	editMenu.AddText("Cut", nil, func(_ *menu.CallbackData) { app.EmitCut() })
+	editMenu.AddText("Copy", nil, func(_ *menu.CallbackData) { app.EmitCopy() })
+	editMenu.AddText("Paste", nil, func(_ *menu.CallbackData) { app.EmitPaste() })
+	editMenu.AddText("Select All", nil, func(_ *menu.CallbackData) { app.EmitSelectAll() })
+
 	err := wails.Run(&options.App{
 		Title:  "PhotoCaption",
 		Width:  1200,
