@@ -177,28 +177,35 @@ func (a *App) SaveFile() {
 	runtime.EventsEmit(a.ctx, "save:request")
 }
 
-// SaveAsFile emits saveas:show with the suggested default path so the frontend
-// can display its own dialog (which supports clipboard paste).
+// SaveAsFile opens a native folder picker, then emits saveas:show so the
+// frontend can prompt for the filename with full clipboard support.
 func (a *App) SaveAsFile() {
 	if a.currentFile == "" {
+		return
+	}
+	dir, err := runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+		Title:            "Choose Folder",
+		DefaultDirectory: filepath.Dir(a.currentFile),
+	})
+	if err != nil || dir == "" {
 		return
 	}
 	ext := filepath.Ext(a.currentFile)
 	base := strings.TrimSuffix(filepath.Base(a.currentFile), ext)
 	defaultName := base + a.settings.SaveAsSuffix + ext
-	defaultPath := filepath.Join(filepath.Dir(a.currentFile), defaultName)
-	runtime.EventsEmit(a.ctx, "saveas:show", defaultPath)
+	runtime.EventsEmit(a.ctx, "saveas:show", dir, defaultName)
 }
 
-// ExecuteSaveAs copies the current file to newPath and triggers a save.
-func (a *App) ExecuteSaveAs(newPath string) {
-	if a.currentFile == "" || newPath == "" {
+// ExecuteSaveAs copies the current file to dir/filename and triggers a save.
+func (a *App) ExecuteSaveAs(dir, filename string) {
+	if a.currentFile == "" || dir == "" || filename == "" {
 		return
 	}
 	// Preserve extension if the user omitted it.
-	if filepath.Ext(newPath) == "" {
-		newPath += filepath.Ext(a.currentFile)
+	if filepath.Ext(filename) == "" {
+		filename += filepath.Ext(a.currentFile)
 	}
+	newPath := filepath.Join(dir, filename)
 	if err := copyFile(a.currentFile, newPath); err != nil {
 		runtime.EventsEmit(a.ctx, "save:error", fmt.Sprintf("Failed to copy file: %v", err))
 		return

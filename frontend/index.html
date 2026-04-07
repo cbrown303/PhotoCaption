@@ -358,6 +358,7 @@
         <canvas id="canvas"></canvas>
         <div id="placeholder">
           <h2>No image open</h2>
+          <p>Drag image file into window or use</p>
           <p>File → Open  (⌘O / Ctrl+O)</p>
         </div>
       </div>
@@ -393,16 +394,21 @@
     </div>
   </div>
 
+
   <!-- ── Save As modal ───────────────────────────────────────────────────── -->
   <div id="saveas-modal" class="modal-overlay" style="display:none" data-nodismiss="true">
-    <div class="modal-dialog" style="width:520px">
+    <div class="modal-dialog" style="width:420px">
       <div class="modal-header">
         <h2>Save As</h2>
       </div>
       <div class="modal-body">
-        <div class="settings-section-label">File Path</div>
+        <div class="settings-section-label">File Name</div>
         <input id="saveas-input" class="settings-input" type="text" spellcheck="false" />
-        <div class="settings-hint">Enter the full path, or just a filename to save in the same folder.</div>
+        <button id="saveas-caption-btn" class="btn-secondary"
+          style="margin-top:8px;width:100%;font-size:12px;padding:5px 10px"
+          title="Use the current caption text as the filename">Populate filename with caption text</button>
+        <div class="settings-section-label" style="margin-top:12px">Save Location</div>
+        <div id="saveas-dir" class="settings-hint" style="word-break:break-all"></div>
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="saveas-cancel-btn">Cancel</button>
@@ -763,6 +769,7 @@
           imageLoaded  = true;
           applyBtn.disabled       = false;
           description.disabled    = false;
+          copyrightBtn.disabled   = !currentSettings.copyrightText;
           canvas.style.display = 'block';
           placeholder.style.display = 'none';
           // Show the file exactly as it exists on disk.
@@ -828,8 +835,9 @@
         savedDescription = '';
         description.value = '';
         updateCharCounter();
-        applyBtn.disabled    = true;
-        description.disabled = true;
+        applyBtn.disabled      = true;
+        description.disabled   = true;
+        copyrightBtn.disabled  = true;
         canvas.style.display      = 'none';
         placeholder.style.display = '';
       });
@@ -890,15 +898,16 @@
 
       // ── Save As modal ─────────────────────────────────────────────────────
       const saveAsInput = document.getElementById('saveas-input');
+      let saveAsDir = '';
 
-      rt.EventsOn('saveas:show', (defaultPath) => {
-        saveAsInput.value = defaultPath;
+      rt.EventsOn('saveas:show', (dir, filename) => {
+        saveAsDir = dir;
+        saveAsInput.value = filename;
+        document.getElementById('saveas-dir').textContent = dir;
         openModal('saveas-modal');
         saveAsInput.focus();
-        // Select just the filename portion so the user can type over it easily.
-        const sep   = Math.max(defaultPath.lastIndexOf('/'), defaultPath.lastIndexOf('\\'));
-        const dotIdx = defaultPath.lastIndexOf('.');
-        saveAsInput.setSelectionRange(sep + 1, dotIdx > sep ? dotIdx : defaultPath.length);
+        const dotIdx = filename.lastIndexOf('.');
+        saveAsInput.setSelectionRange(0, dotIdx > 0 ? dotIdx : filename.length);
       });
 
       saveAsInput.addEventListener('keydown', async (e) => {
@@ -926,12 +935,44 @@
             saveAsInput.value = saveAsInput.value.slice(0, start) + saveAsInput.value.slice(end);
             saveAsInput.selectionStart = saveAsInput.selectionEnd = start;
           }
+        } else if (e.key === 'Enter') {
+          document.getElementById('saveas-confirm-btn').click();
+        } else if (e.key === 'Escape') {
+          document.getElementById('saveas-cancel-btn').click();
         }
       });
 
-      saveAsInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter')  document.getElementById('saveas-confirm-btn').click();
-        if (e.key === 'Escape') document.getElementById('saveas-cancel-btn').click();
+      // Sanitize caption text into a safe filename stem (no extension).
+      // - Strips quotes (' and ")
+      // - Replaces characters illegal on Windows or macOS ( \ / : * ? < > | ) with _
+      // - Collapses runs of whitespace/underscores into a single _
+      // - Trims leading/trailing spaces, underscores, and dots
+      // - Truncates to 200 characters to stay well under the 255-byte OS limit
+      //   and leave room for the extension.
+      function captionToFilename(caption) {
+        let name = caption
+          .replace(/['"]/g, '')                  // strip quotes
+          .replace(/[\\/:*?<>|]/g, '_')          // replace illegal chars with _
+          .replace(/\s+/g, '_')                  // spaces → _
+          .replace(/_+/g, '_')                   // collapse runs of _
+          .replace(/^[_.\s]+|[_.\s]+$/g, '')     // trim leading/trailing _ . space
+          .slice(0, 200)                         // max 200 chars for the stem
+          .replace(/[_.\s]+$/, '');              // trim again after slice
+        return name;
+      }
+
+      document.getElementById('saveas-caption-btn').addEventListener('click', () => {
+        const caption = description.value.trim();
+        if (!caption) return;
+        const ext = saveAsInput.value.includes('.')
+          ? saveAsInput.value.slice(saveAsInput.value.lastIndexOf('.'))
+          : '';
+        const stem = captionToFilename(caption);
+        if (stem) {
+          saveAsInput.value = stem + ext;
+          saveAsInput.focus();
+          saveAsInput.setSelectionRange(0, stem.length);
+        }
       });
 
       document.getElementById('saveas-cancel-btn').addEventListener('click', () => {
@@ -939,8 +980,8 @@
       });
 
       document.getElementById('saveas-confirm-btn').addEventListener('click', () => {
-        const path = saveAsInput.value.trim();
-        if (path) window.go.main.App.ExecuteSaveAs(path);
+        const filename = saveAsInput.value.trim();
+        if (filename) window.go.main.App.ExecuteSaveAs(saveAsDir, filename);
         closeModal('saveas-modal');
       });
 
@@ -977,7 +1018,7 @@
       // ── Load settings on startup ──────────────────────────────────────────
       window.go.main.App.GetSettings().then(s => {
         currentSettings = s;
-        if (s.copyrightText) copyrightBtn.disabled = false;
+        // Keep button disabled until a file is loaded; imageLoaded tracks that.
       });
 
       copyrightBtn.addEventListener('click', async () => {
