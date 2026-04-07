@@ -529,7 +529,8 @@
     let imageLoaded       = false;
     let isDirty           = false;  // true when caption changed since last save
     let savedDescription  = '';     // caption text at last save/open
-    let pendingAction     = null;   // 'close' | 'quit' when Save→action is in flight
+    let pendingAction     = null;   // 'close' | 'quit' | 'drop' when Save→action is in flight
+    let pendingDropPath   = null;   // file path waiting to load after unsaved-changes check
     let undoHistory       = [];     // stack of previous caption values
     let isUndoing         = false;  // guard: prevents undo from pushing to history
     let lastCaptionValue  = '';     // value before the most recent input event
@@ -785,6 +786,11 @@
         showBanner('Saved successfully', 'success');
         if (pendingAction === 'close') { pendingAction = null; window.go.main.App.ConfirmClose(); }
         else if (pendingAction === 'quit') { pendingAction = null; window.go.main.App.ConfirmQuit(); }
+        else if (pendingAction === 'drop') {
+          const path = pendingDropPath;
+          pendingAction = null; pendingDropPath = null;
+          window.go.main.App.LoadFileByPath(path);
+        }
       });
       rt.EventsOn('save:error',   (msg) => showBanner('Save failed: ' + msg, 'error'));
 
@@ -836,16 +842,34 @@
       document.getElementById('close-discard-btn').addEventListener('click', () => {
         closeModal('close-confirm-modal');
         const action = pendingAction;
-        pendingAction = null;
+        const dropPath = pendingDropPath;
+        pendingAction = null; pendingDropPath = null;
         isDirty = false;
         if (action === 'quit') window.go.main.App.ConfirmQuit();
+        else if (action === 'drop') window.go.main.App.LoadFileByPath(dropPath);
         else window.go.main.App.ConfirmClose();
       });
 
       document.getElementById('close-cancel-btn').addEventListener('click', () => {
         pendingAction = null;
+        pendingDropPath = null;
         closeModal('close-confirm-modal');
       });
+
+      // ── Drag-and-drop file loading ────────────────────────────────────────
+      rt.OnFileDrop((x, y, paths) => {
+        const path = paths[0];
+        if (!path) return;
+        if (!isDirty) {
+          window.go.main.App.LoadFileByPath(path);
+          return;
+        }
+        pendingDropPath = path;
+        pendingAction   = 'drop';
+        document.getElementById('close-confirm-msg').textContent =
+          'You have unsaved changes. Do you want to save before opening the new image?';
+        openModal('close-confirm-modal');
+      }, false);
 
       // ── About modal ───────────────────────────────────────────────────────
       rt.EventsOn('app:about', async () => {

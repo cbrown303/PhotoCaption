@@ -62,6 +62,9 @@ func main() {
 		Title:  "PhotoCaption",
 		Width:  1200,
 		Height: 800,
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop: true,
+		},
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},

@@ -157,6 +157,18 @@ func (a *App) OpenFile() {
 	a.loadAndEmitImage(filePath)
 }
 
+// LoadFileByPath loads an image from the given path directly (e.g. via drag and drop).
+// Returns false if the path is not a supported image format.
+func (a *App) LoadFileByPath(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext != ".jpg" && ext != ".jpeg" && ext != ".png" {
+		return false
+	}
+	a.currentFile = path
+	a.loadAndEmitImage(path)
+	return true
+}
+
 // SaveFile emits save:request so the frontend calls SaveWithDescription.
 func (a *App) SaveFile() {
 	if a.currentFile == "" {
